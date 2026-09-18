@@ -27,6 +27,11 @@ const arch = archMap[os.arch()] ?? os.arch()
 const base = `opencode-${platform}-${arch}`
 const sourceBinary = platform === "windows" ? "opencode.exe" : "opencode"
 const targetBinary = path.join(__dirname, "bin", "opencode.exe")
+// OfficeCLI is vendored next to the platform binary and exposed as a local MCP
+// server by the runtime (see src/mcp/bundled.ts). It is optional: a package
+// built with --skip-officecli simply installs without it.
+const sourceOfficeCli = platform === "windows" ? "officecli.exe" : "officecli"
+const targetOfficeCli = path.join(__dirname, "bin", sourceOfficeCli)
 
 function supportsAvx2() {
   if (arch !== "x64") return false
@@ -116,11 +121,27 @@ function packageNames() {
   return [base]
 }
 
+function resolvePackageDir(name) {
+  return path.dirname(require.resolve(`${name}/package.json`))
+}
+
 function resolveBinary(name) {
-  const packageJsonPath = require.resolve(`${name}/package.json`)
-  const binaryPath = path.join(path.dirname(packageJsonPath), "bin", sourceBinary)
+  const binaryPath = path.join(resolvePackageDir(name), "bin", sourceBinary)
   if (!fs.existsSync(binaryPath)) throw new Error(`Binary not found at ${binaryPath}`)
   return binaryPath
+}
+
+// Best effort: an install must never fail because the optional MCP binary is
+// missing from the platform package.
+function copyOfficeCli(packageDir) {
+  try {
+    const source = path.join(packageDir, "bin", sourceOfficeCli)
+    if (!fs.existsSync(source)) return false
+    copyBinary(source, targetOfficeCli)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function installPackage(name) {
@@ -137,6 +158,7 @@ function installPackage(name) {
     if (result.status !== 0) return
     const packageDir = path.join(temp, "node_modules", name)
     copyBinary(path.join(packageDir, "bin", sourceBinary), targetBinary)
+    copyOfficeCli(packageDir)
     return true
   } finally {
     fs.rmSync(temp, { recursive: true, force: true })
@@ -168,6 +190,7 @@ function main() {
   for (const name of packageNames()) {
     try {
       copyBinary(resolveBinary(name), targetBinary)
+      copyOfficeCli(resolvePackageDir(name))
       if (verifyBinary()) return
     } catch {
       if (installPackage(name) && verifyBinary()) return

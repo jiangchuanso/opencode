@@ -67,6 +67,30 @@ Your local config values override the remote defaults. See [config precedence](/
 
 ---
 
+## Bundled servers
+
+The CLI ships with [OfficeCLI](https://github.com/iOfficeAI/OfficeCLI) — one binary for reading, editing, and creating `.docx`, `.xlsx`, and `.pptx` files. It is vendored next to the `opencode` binary when the package is built and started as a local MCP server named `officecli`, so it needs no separate install and works on hosts with no internet access.
+
+```jsonc title="opencode.jsonc"
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "officecli": {
+      // Disable the bundled server.
+      "enabled": false,
+    },
+  },
+}
+```
+
+- An `officecli` entry in your own config replaces the bundled one entirely — including `enabled: false` to turn it off.
+- `OPENCODE_DISABLE_OFFICECLI=1` disables it without touching config, and `OPENCODE_OFFICECLI_PATH` points at a different binary.
+- Building from source vendors it automatically; pass `--skip-officecli` (or set `OPENCODE_SKIP_OFFICECLI=1`) for a build without it. `OPENCODE_OFFICECLI_VERSION` pins the version and `OPENCODE_OFFICECLI_CACHE` reuses an already downloaded binary, which is how an offline machine can build after the cache directory is copied over.
+
+Like every MCP server, the bundled tools count against your context window — see the caveat above.
+
+---
+
 ## Local
 
 Add local MCP servers using `type` to `"local"` within the MCP object.

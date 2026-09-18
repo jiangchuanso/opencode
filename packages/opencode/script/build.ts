@@ -15,6 +15,7 @@ const generated = await import("./generate.ts")
 
 import { Script } from "@opencode-ai/script"
 import pkg from "../package.json"
+import { binaryName as officeCliBinaryName, vendorOfficeCli } from "./vendor-officecli"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
@@ -22,6 +23,10 @@ const skipInstall = process.argv.includes("--skip-install")
 const sourcemapsFlag = process.argv.includes("--sourcemaps")
 const plugin = createSolidTransformPlugin()
 const skipEmbedWebUi = process.argv.includes("--skip-embed-web-ui")
+// OfficeCLI is vendored next to each binary and exposed as a local MCP server by
+// the runtime, so offline installs get Office document tools for free. Pass
+// --skip-officecli (or set OPENCODE_SKIP_OFFICECLI) for a build without it.
+const skipOfficeCli = process.argv.includes("--skip-officecli") || process.env["OPENCODE_SKIP_OFFICECLI"] === "1"
 
 const createEmbeddedWebUIBundle = async () => {
   console.log(`Building Web UI to embed in the binary`)
@@ -200,6 +205,24 @@ for (const item of targets) {
       ...(item.os === "linux" ? { "process.env.OPENTUI_LIBC": JSON.stringify(item.abi ?? "glibc") } : {}),
     },
   })
+
+  // Vendor the OfficeCLI MCP binary next to the compiled CLI. The release
+  // tarball and the platform npm package both ship everything under bin/, and
+  // the runtime resolves the binary as a sibling of the running executable.
+  if (skipOfficeCli) {
+    console.log(`Skipping officecli vendoring for ${name}`)
+  } else {
+    try {
+      await vendorOfficeCli({
+        target: item,
+        outfile: `dist/${name}/bin/${officeCliBinaryName(item.os)}`,
+      })
+    } catch (e) {
+      console.error(`Failed to vendor officecli for ${name}:`, e)
+      console.error("Re-run with --skip-officecli to build without it.")
+      process.exit(1)
+    }
+  }
 
   // Smoke test: only run if binary is for current platform
   if (item.os === process.platform && item.arch === process.arch && !item.abi) {

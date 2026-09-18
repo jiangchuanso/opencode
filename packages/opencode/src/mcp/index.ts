@@ -32,6 +32,7 @@ import { InstanceState } from "@/effect/instance-state"
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { McpCatalog } from "./catalog"
+import { BundledMcp } from "./bundled"
 import { McpEvent } from "@opencode-ai/schema/mcp-event"
 import { McpBrowser } from "./browser"
 
@@ -118,6 +119,14 @@ type McpEntry = NonNullable<ConfigV1.Info["mcp"]>[string]
 
 function isMcpConfigured(entry: McpEntry): entry is ConfigMCPV1.Info {
   return typeof entry === "object" && entry !== null && "type" in entry
+}
+
+// Servers that ship with the CLI (see ./bundled) are merged underneath user
+// config, so an explicit `mcp.officecli` entry — including `enabled: false` —
+// always wins. Every consumer (startup, status, tool listing, timeouts) goes
+// through here so they can never disagree about which servers exist.
+function resolvedMcpConfig(cfg: ConfigV1.Info): Record<string, McpEntry> {
+  return BundledMcp.resolved(cfg)
 }
 
 function remoteURL(value: string) {
@@ -493,7 +502,7 @@ const layer = Layer.effect(
       Effect.fn("MCP.state")(function* () {
         const cfg = yield* cfgSvc.get()
         const bridge = yield* EffectBridge.make()
-        const config = cfg.mcp ?? {}
+        const config = resolvedMcpConfig(cfg)
         const s: State = {
           config: {},
           status: {},
@@ -592,7 +601,7 @@ const layer = Layer.effect(
       const s = yield* InstanceState.get(state)
 
       const cfg = yield* cfgSvc.get()
-      const config = cfg.mcp ?? {}
+      const config = resolvedMcpConfig(cfg)
       const result: Record<string, Status> = {}
 
       for (const [key, mcp] of Object.entries(config)) {
@@ -668,7 +677,7 @@ const layer = Layer.effect(
       const s = yield* InstanceState.get(state)
 
       const cfg = yield* cfgSvc.get()
-      const config = cfg.mcp ?? {}
+      const config = resolvedMcpConfig(cfg)
       const defaultTimeout = cfg.experimental?.mcp_timeout
 
       for (const [clientName, client] of Object.entries(s.clients)) {
@@ -696,6 +705,7 @@ const layer = Layer.effect(
     ) {
       return Effect.gen(function* () {
         const cfg = yield* cfgSvc.get()
+        const config = resolvedMcpConfig(cfg)
         return yield* Effect.forEach(
           Object.entries(s.clients).filter(
             ([name]) => s.status[name]?.status === "connected" && (!targetClientName || name === targetClientName),
@@ -704,7 +714,7 @@ const layer = Layer.effect(
             McpCatalog.fetch(
               clientName,
               client,
-              (c) => listFn(c, requestTimeout(s, clientName, cfg.mcp?.[clientName], cfg.experimental?.mcp_timeout)),
+              (c) => listFn(c, requestTimeout(s, clientName, config[clientName], cfg.experimental?.mcp_timeout)),
               label,
               key,
             ).pipe(Effect.map((items) => Object.entries(items ?? {}))),
@@ -750,8 +760,9 @@ const layer = Layer.effect(
         return undefined
       }
       const cfg = yield* cfgSvc.get()
+      const config = resolvedMcpConfig(cfg)
       return yield* Effect.tryPromise({
-        try: () => fn(client, requestTimeout(s, clientName, cfg.mcp?.[clientName], cfg.experimental?.mcp_timeout)),
+        try: () => fn(client, requestTimeout(s, clientName, config[clientName], cfg.experimental?.mcp_timeout)),
         catch: (error) => error,
       }).pipe(
         Effect.tapError((error) =>
@@ -792,7 +803,7 @@ const layer = Layer.effect(
       if (s.config[mcpName]) return s.config[mcpName]
 
       const cfg = yield* cfgSvc.get()
-      const mcpConfig = cfg.mcp?.[mcpName]
+      const mcpConfig = resolvedMcpConfig(cfg)[mcpName]
       if (!mcpConfig || !isMcpConfigured(mcpConfig)) return undefined
       return mcpConfig
     })
@@ -961,7 +972,7 @@ const layer = Layer.effect(
       const runtimeConfig = (yield* InstanceState.has(state))
         ? (yield* InstanceState.get(state)).config[mcpName]
         : undefined
-      const mcpConfig = runtimeConfig ?? (yield* cfgSvc.get()).mcp?.[mcpName]
+      const mcpConfig = runtimeConfig ?? resolvedMcpConfig(yield* cfgSvc.get())[mcpName]
       if (!mcpConfig || !isMcpConfigured(mcpConfig) || mcpConfig.type !== "remote") return "not_authenticated"
       const entry = yield* auth.getForUrl(mcpName, mcpConfig.url)
       if (!entry?.tokens) return "not_authenticated"

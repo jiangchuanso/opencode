@@ -66,6 +66,15 @@ export const Flag = {
     const value = Number(process.env["OPENCODE_MODELS_FETCH_TIMEOUT_MS"])
     return Number.isFinite(value) && value > 0 ? value : undefined
   },
+  // OfficeCLI ships inside the CLI package and is registered as a local MCP
+  // server. Point this at a specific binary, or disable the bundled server, when
+  // the vendored copy is not what you want.
+  get OPENCODE_OFFICECLI_PATH() {
+    return process.env["OPENCODE_OFFICECLI_PATH"]
+  },
+  get OPENCODE_DISABLE_OFFICECLI() {
+    return truthy("OPENCODE_DISABLE_OFFICECLI")
+  },
   get OPENCODE_EXPERIMENTAL_REFERENCES() {
     return enabledByExperimental("OPENCODE_EXPERIMENTAL_REFERENCES")
   },

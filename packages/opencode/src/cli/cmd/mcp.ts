@@ -9,6 +9,7 @@ import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { MCP } from "../../mcp"
+import { BundledMcp } from "../../mcp/bundled"
 import { McpAuth } from "../../mcp/auth"
 import { McpOAuthProvider } from "../../mcp/oauth-provider"
 import { Config } from "@/config/config"
@@ -56,7 +57,11 @@ function isMcpRemote(config: McpEntry): config is McpRemote {
 }
 
 function configuredServers(config: ConfigV1.Info) {
-  return Object.entries(config.mcp ?? {}).filter((entry): entry is [string, McpConfigured] => isMcpConfigured(entry[1]))
+  // Bundled servers (e.g. officecli) are part of the effective set, so `mcp list`
+  // reports them exactly like configured ones.
+  return Object.entries(BundledMcp.resolved(config)).filter(
+    (entry): entry is [string, McpConfigured] => isMcpConfigured(entry[1]),
+  )
 }
 
 function oauthServers(config: ConfigV1.Info) {
