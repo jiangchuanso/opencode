@@ -73,6 +73,8 @@ interface MockState {
   body: string
   status: number
   calls: Array<{ url: string; userAgent: string | null }>
+  /** Simulates a catalog host that accepts the connection but never answers. */
+  hang?: boolean
 }
 
 const makeMockClient = (state: Ref.Ref<MockState>) =>
@@ -83,6 +85,7 @@ const makeMockClient = (state: Ref.Ref<MockState>) =>
         calls: [...s.calls, { url: request.url, userAgent: request.headers["user-agent"] ?? null }],
       }))
       const s = yield* Ref.get(state)
+      if (s.hang) return yield* Effect.never
       return HttpClientResponse.fromWeb(request, new Response(s.body, { status: s.status }))
     }),
   )
@@ -173,6 +176,34 @@ describe("ModelsDev Service", () => {
       expect(yield* Effect.promise(() => readFile(cacheFile, "utf8"))).toBe(JSON.stringify(fixture2))
       const final = yield* Ref.get(state)
       expect(final.calls.length).toBe(1)
+    }),
+  )
+
+  it.live("get() serves an empty catalog without waiting on a catalog host that never answers", () =>
+    Effect.gen(function* () {
+      const disabled = Flag.OPENCODE_DISABLE_MODELS_FETCH
+      const timeout = process.env["OPENCODE_MODELS_FETCH_TIMEOUT_MS"]
+      Flag.OPENCODE_DISABLE_MODELS_FETCH = false
+      process.env["OPENCODE_MODELS_FETCH_TIMEOUT_MS"] = "50"
+      const state = yield* Ref.make<MockState>({ ...initialState, hang: true })
+      const result = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(buildLayer(state))
+          return yield* ModelsDev.Service.use((s) => s.get()).pipe(Effect.provide(context))
+        }),
+      ).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            Flag.OPENCODE_DISABLE_MODELS_FETCH = disabled
+            if (timeout === undefined) delete process.env["OPENCODE_MODELS_FETCH_TIMEOUT_MS"]
+            else process.env["OPENCODE_MODELS_FETCH_TIMEOUT_MS"] = timeout
+          }),
+        ),
+      )
+      expect(result).toEqual({})
+      // The fetch was attempted, then abandoned rather than blocking the caller.
+      // (The background warm-up may have added a second attempt by now.)
+      expect((yield* Ref.get(state)).calls.length).toBeGreaterThanOrEqual(1)
     }),
   )
 

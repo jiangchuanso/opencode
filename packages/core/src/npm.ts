@@ -7,6 +7,7 @@ import { NodeFileSystem } from "@effect/platform-node"
 import { FSUtil } from "./fs-util"
 import { Global } from "./global"
 import { EffectFlock } from "./util/effect-flock"
+import { Flag } from "./flag/flag"
 import { makeGlobalNode } from "./effect/app-node"
 import { filesystem } from "./effect/app-node-platform"
 import { LayerNode } from "./effect/layer-node"
@@ -83,8 +84,15 @@ const layer = Layer.effect(
         const { Arborist } = yield* Effect.promise(() => import("@npmcli/arborist"))
         const add = input.add ?? []
         const npmOptions = yield* NpmConfig.load(input.dir)
+        // npm waits five minutes per attempt and retries twice by default. On a
+        // host that cannot reach a registry that is pure dead time before the
+        // install fails anyway, so bound it and prefer anything already cached.
+        const networkOptions = Flag.OPENCODE_OFFLINE
+          ? { fetchTimeout: 5_000, fetchRetries: 0, preferOffline: true }
+          : {}
         const arborist = new Arborist({
           ...npmOptions,
+          ...networkOptions,
           path: input.dir,
           binLinks: true,
           progress: false,
@@ -95,6 +103,7 @@ const layer = Layer.effect(
           try: () =>
             arborist.reify({
               ...npmOptions,
+              ...networkOptions,
               add,
               save: true,
               saveType: "prod",

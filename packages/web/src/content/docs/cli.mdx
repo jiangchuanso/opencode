@@ -705,6 +705,8 @@ OpenCode can be configured using environment variables.
 | `OPENCODE_SERVER_PASSWORD`            | string  | Enable basic auth for `serve`/`web`               |
 | `OPENCODE_SERVER_USERNAME`            | string  | Override basic auth username (default `opencode`) |
 | `OPENCODE_MODELS_URL`                 | string  | Custom URL for fetching models configuration      |
+| `OPENCODE_MODELS_FETCH_TIMEOUT_MS`    | number  | Cold-start budget for the provider catalog fetch (default `3000`) |
+| `OPENCODE_OFFLINE`                    | boolean | Skip best-effort network calls: catalog fetch, update check, LSP and package downloads |
 
 ---
 

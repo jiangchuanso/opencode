@@ -19,7 +19,13 @@ export class Service extends ConfigService.Service<Service>()("@opencode/Runtime
   disableDefaultPlugins: bool("OPENCODE_DISABLE_DEFAULT_PLUGINS"),
   disableEmbeddedWebUi: bool("OPENCODE_DISABLE_EMBEDDED_WEB_UI"),
   disableExternalSkills: bool("OPENCODE_DISABLE_EXTERNAL_SKILLS"),
-  disableLspDownload: bool("OPENCODE_DISABLE_LSP_DOWNLOAD"),
+  // LSP servers are fetched from the package registry on first use; on an
+  // offline host that lookup cannot succeed and would only stall the first
+  // request that touches the language server.
+  disableLspDownload: Config.all({
+    explicit: bool("OPENCODE_DISABLE_LSP_DOWNLOAD"),
+    offline: bool("OPENCODE_OFFLINE"),
+  }).pipe(Config.map((flags) => flags.explicit || flags.offline)),
   disableClaudeCodePrompt: Config.all({
     broad: bool("OPENCODE_DISABLE_CLAUDE_CODE"),
     direct: bool("OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"),

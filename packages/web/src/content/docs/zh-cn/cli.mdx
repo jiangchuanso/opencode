@@ -588,6 +588,8 @@ OpenCode 可以通过环境变量进行配置。
 | `OPENCODE_SERVER_PASSWORD`            | string  | 为 `serve`/`web` 启用基本认证           |
 | `OPENCODE_SERVER_USERNAME`            | string  | 覆盖基本认证用户名（默认为 `opencode`） |
 | `OPENCODE_MODELS_URL`                 | string  | 自定义模型配置获取 URL                  |
+| `OPENCODE_MODELS_FETCH_TIMEOUT_MS`    | number  | 模型目录首次拉取的等待上限（默认 `3000`） |
+| `OPENCODE_OFFLINE`                    | boolean | 跳过所有尽力而为的联网动作：模型目录拉取、更新检查、LSP 与依赖下载 |
 
 ---
 

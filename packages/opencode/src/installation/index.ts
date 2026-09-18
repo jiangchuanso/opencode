@@ -88,6 +88,13 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient
     const httpOk = HttpClient.filterStatusOk(withTransientReadRetry(http))
+    // Version lookups are best effort and must never hang: the HTTP client has no
+    // socket timeout, so an unreachable registry (offline or air-gapped host)
+    // would otherwise keep the update check pending for as long as the socket
+    // stays open, retrying with exponential backoff.
+    const VERSION_LOOKUP_TIMEOUT = "10 seconds"
+    const lookup = (request: HttpClientRequest.HttpClientRequest) =>
+      httpOk.execute(request).pipe(Effect.timeout(VERSION_LOOKUP_TIMEOUT))
     const appProcess = yield* AppProcess.Service
 
     const text = Effect.fnUntraced(
@@ -215,7 +222,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
             const info = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(BrewInfoV2))(infoJson)
             return info.formulae[0].versions.stable
           }
-          const response = yield* httpOk.execute(
+          const response = yield* lookup(
             HttpClientRequest.get("https://formulae.brew.sh/api/formula/opencode.json").pipe(
               HttpClientRequest.acceptJson,
             ),
@@ -225,7 +232,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
         }
 
         if (detectedMethod === "npm" || detectedMethod === "bun" || detectedMethod === "pnpm") {
-          const response = yield* httpOk.execute(
+          const response = yield* lookup(
             HttpClientRequest.get(
               `${yield* NpmConfig.registry(process.cwd())}/opencode-ai/${InstallationChannel}`,
             ).pipe(HttpClientRequest.acceptJson),
@@ -235,7 +242,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
         }
 
         if (detectedMethod === "choco") {
-          const response = yield* httpOk.execute(
+          const response = yield* lookup(
             HttpClientRequest.get(
               "https://community.chocolatey.org/api/v2/Packages?$filter=Id%20eq%20%27opencode%27%20and%20IsLatestVersion&$select=Version",
             ).pipe(HttpClientRequest.setHeaders({ Accept: "application/json;odata=verbose" })),
@@ -245,7 +252,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
         }
 
         if (detectedMethod === "scoop") {
-          const response = yield* httpOk.execute(
+          const response = yield* lookup(
             HttpClientRequest.get(
               "https://raw.githubusercontent.com/ScoopInstaller/Main/master/bucket/opencode.json",
             ).pipe(HttpClientRequest.setHeaders({ Accept: "application/json" })),
@@ -254,7 +261,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
           return data.version
         }
 
-        const response = yield* httpOk.execute(
+        const response = yield* lookup(
           HttpClientRequest.get("https://api.github.com/repos/anomalyco/opencode/releases/latest").pipe(
             HttpClientRequest.acceptJson,
           ),

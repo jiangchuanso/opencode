@@ -164,6 +164,11 @@ const layer = Layer.effect(
     )
     const ttl = Duration.minutes(5)
     const lockKey = `models-dev:${filepath}`
+    const FETCH_TIMEOUT = Duration.seconds(10)
+    // Cold-start budget. The catalog only decorates providers with metadata, so
+    // a catalog host that cannot be reached in a couple of seconds must never
+    // hold up the first model request on an air-gapped host.
+    const COLD_START_TIMEOUT = Duration.millis(Flag.OPENCODE_MODELS_FETCH_TIMEOUT_MS ?? 3_000)
 
     const fresh = Effect.fnUntraced(function* () {
       const stat = yield* fs.stat(filepath).pipe(Effect.catch(() => Effect.succeed(undefined)))
@@ -172,12 +177,12 @@ const layer = Layer.effect(
       return Date.now() - mtime < Duration.toMillis(ttl)
     })
 
-    const fetchApi = Effect.fn("ModelsDev.fetchApi")(function* () {
+    const fetchApi = Effect.fn("ModelsDev.fetchApi")(function* (timeout: Duration.Input = FETCH_TIMEOUT) {
       return yield* HttpClientRequest.get(`${source}/api.json`).pipe(
         HttpClientRequest.setHeader("User-Agent", USER_AGENT),
         http.execute,
         Effect.flatMap((res) => res.text),
-        Effect.timeout("10 seconds"),
+        Effect.timeout(timeout),
       )
     })
 
@@ -199,8 +204,8 @@ const layer = Layer.effect(
       typeof OPENCODE_MODELS_DEV === "undefined" ? undefined : OPENCODE_MODELS_DEV,
     )
 
-    const fetchAndWrite = Effect.fn("ModelsDev.fetchAndWrite")(function* () {
-      const text = yield* fetchApi()
+    const fetchAndWrite = Effect.fn("ModelsDev.fetchAndWrite")(function* (timeout?: Duration.Input) {
+      const text = yield* fetchApi(timeout)
       const tempfile = `${filepath}.${process.pid}.${Date.now()}.tmp`
       yield* fs.writeWithDirs(tempfile, text).pipe(
         Effect.andThen(fs.rename(tempfile, filepath)),
@@ -219,15 +224,28 @@ const layer = Layer.effect(
       if (fromDisk) return fromDisk
       const snapshot = yield* loadSnapshot
       if (snapshot) return snapshot
-      if (Flag.OPENCODE_DISABLE_MODELS_FETCH) return {}
+      if (Flag.OPENCODE_DISABLE_MODELS_FETCH || Flag.OPENCODE_OFFLINE) return {}
       // Flock is cross-process: concurrent opencode CLIs can race on this cache file.
-      const text = yield* Effect.scoped(
+      const quick = yield* Effect.scoped(
         Effect.gen(function* () {
           yield* Flock.effect(lockKey)
-          return yield* fetchAndWrite()
+          return yield* fetchAndWrite(COLD_START_TIMEOUT)
         }),
+      ).pipe(Effect.option)
+      if (Option.isSome(quick)) return JSON.parse(quick.value) as Record<string, Provider>
+      // Slow or unreachable catalog host: hand back an empty catalog immediately
+      // (this value is cached for the lifetime of the process) and warm the
+      // on-disk cache in the background so the next start can read it. Blocking
+      // here is what made a first request wait minutes on an offline host.
+      yield* Effect.forkScoped(
+        Effect.scoped(
+          Effect.gen(function* () {
+            yield* Flock.effect(lockKey)
+            yield* fetchAndWrite()
+          }),
+        ).pipe(Effect.ignore, Effect.withSpan("ModelsDev.warmCache")),
       )
-      return JSON.parse(text) as Record<string, Provider>
+      return {}
     }).pipe(Effect.withSpan("ModelsDev.populate"), Effect.orDie)
 
     const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
@@ -235,6 +253,7 @@ const layer = Layer.effect(
     const get = (): Effect.Effect<Record<string, Provider>> => cachedGet
 
     const refresh = Effect.fn("ModelsDev.refresh")(function* (force = false) {
+      if (Flag.OPENCODE_OFFLINE) return
       if (!force && (yield* fresh())) return
       yield* Effect.scoped(
         Effect.gen(function* () {
@@ -252,7 +271,11 @@ const layer = Layer.effect(
       )
     })
 
-    if (!Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
+    if (
+      !Flag.OPENCODE_DISABLE_MODELS_FETCH &&
+      !Flag.OPENCODE_OFFLINE &&
+      !process.argv.includes("--get-yargs-completions")
+    ) {
       // Schedule.spaced runs the effect once, then waits between completions.
       yield* Effect.forkScoped(refresh().pipe(Effect.repeat(Schedule.spaced("60 minutes")), Effect.ignore))
     }

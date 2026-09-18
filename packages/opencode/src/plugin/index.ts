@@ -33,6 +33,7 @@ import type { WorkspaceAdapter } from "@/control-plane/types"
 import { RuntimeFlags } from "@/effect/runtime-flags"
 import { EventV2Bridge } from "@/event-v2-bridge"
 import { InstallationChannel } from "@opencode-ai/core/installation/version"
+import { Flag } from "@opencode-ai/core/flag/flag"
 
 type State = {
   hooks: Hooks[]
@@ -60,6 +61,10 @@ export interface Interface {
 export class Service extends Context.Service<Service, Interface>()("@opencode/Plugin") {}
 
 export function experimentalWebSocketsEnabled(input: { enabled: boolean; channel?: string }) {
+  // A WebSocket upgrade to a host that cannot answer it costs a full connect
+  // timeout per attempt before the request finally goes out over HTTP, so never
+  // opt into it on a host that is known to be offline.
+  if (Flag.OPENCODE_OFFLINE) return false
   return input.enabled || ["local", "dev", "beta"].includes(input.channel ?? InstallationChannel)
 }
 
