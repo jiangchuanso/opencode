@@ -6,7 +6,10 @@ on:
 
 jobs:
   notify:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # Posts to anomalyco's Discord via the DISCORD_WEBHOOK secret; a fork has no
+    # webhook, so skip instead of failing when a release is published.
+    if: github.repository == 'anomalyco/opencode'
+    runs-on: ubuntu-latest
     steps:
       - name: Send nicely-formatted embed to Discord
         uses: SethCohen/github-releases-to-discord@24d166886aee4646d448c8a389ff9e1ebcab3682 # v1.20.0

@@ -364,7 +364,7 @@ jobs:
           persist-credentials: false
 
       - name: Run opencode
-        uses: jiangchuanso/opencode/github@latest${envStr}
+        uses: jiangchuanso/opencode/github@dev${envStr}
         with:
           model: ${provider}/${model}`,
         )
