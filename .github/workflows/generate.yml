@@ -7,7 +7,10 @@ on:
 
 jobs:
   generate:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # Upstream-only job: it relies on anomalyco's own secrets or repository state,
+    # so it is skipped in forks instead of failing or acting on upstream.
+    if: github.repository == 'anomalyco/opencode'
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write

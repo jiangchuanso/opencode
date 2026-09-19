@@ -6,8 +6,8 @@ on:
 
 jobs:
   check-duplicates:
-    if: github.event.action == 'opened'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    if: github.event.action == 'opened' && github.repository == 'anomalyco/opencode'
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       issues: write
@@ -140,8 +140,8 @@ jobs:
           Remember: post at most ONE comment combining all findings. If everything is fine, post nothing."
 
   recheck-compliance:
-    if: github.event.action == 'edited' && contains(github.event.issue.labels.*.name, 'needs:compliance')
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    if: github.event.action == 'edited' && contains(github.event.issue.labels.*.name, 'needs:compliance') && github.repository == 'anomalyco/opencode'
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       issues: write

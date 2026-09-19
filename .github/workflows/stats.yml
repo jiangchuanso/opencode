@@ -12,7 +12,7 @@ jobs:
     # Pulls PostHog download stats and commits STATS.md into the upstream
     # repository — nothing to collect (or push) from a fork.
     if: github.repository == 'anomalyco/opencode'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 
