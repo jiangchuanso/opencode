@@ -72,6 +72,16 @@ jobs:
           path: ~/.cache/opencode/bin
           key: ripgrep-${{ runner.os }}-${{ runner.arch }}
 
+      # Windows runners have no system rg and a cold cache entry, so the first
+      # search test used to pay for the download itself — it regularly outlived
+      # the test's timeout, and the killed extraction was reported as a ripgrep
+      # failure. Installing one keeps `which("rg.exe")` on the fast path; the
+      # cache above still covers the download when this is unavailable.
+      - name: Install ripgrep
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        run: choco install ripgrep --no-progress -y
+
       - name: Run unit tests
         timeout-minutes: 20
         run: GITHUB_ACTIONS=false bun turbo test

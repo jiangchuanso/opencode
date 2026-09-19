@@ -33,6 +33,14 @@ import { it } from "./effect"
 const opencodeRoot = path.resolve(import.meta.dir, "../../")
 const cliEntry = path.join(opencodeRoot, "src/index.ts")
 
+// How long a single `opencode run` child may take before it is killed and
+// reported as a synthetic non-zero exit. Every child boots a full bun program
+// (transpile plus provider/plugin init) while sibling `cliIt.concurrent` cases
+// boot their own, so on a loaded CI runner a child that is merely slow used to
+// be killed at 30s while the test still had its declared 60s budget — the
+// failure then surfaced as `expected 0, received -1`, which reads like a crash.
+const CLI_CHILD_TIMEOUT_MS = 60_000
+
 export const testModelID = "test/test-model"
 
 // Wrap a Bun subprocess pipe (or any ReadableStream<Uint8Array>) as a Stream.
@@ -206,7 +214,7 @@ export function withCliFixture<A, E>(
 
     const spawn = Effect.fn("opencode.spawn")(function* (args: string[], opts?: SpawnOpts) {
       const start = Date.now()
-      const timeoutMs = opts?.timeoutMs ?? 30_000
+      const timeoutMs = opts?.timeoutMs ?? CLI_CHILD_TIMEOUT_MS
       // stdin: "ignore" so the child doesn't see a piped stdin and block
       // on `Bun.stdin.text()` (see src/cli/cmd/run.ts — non-TTY stdin is
       // consumed as the prompt). The old Process.run wrapper defaulted to

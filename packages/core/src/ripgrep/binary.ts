@@ -1,4 +1,5 @@
 import path from "path"
+import { randomUUID } from "crypto"
 import { Context, Effect, Layer, Stream } from "effect"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
 import { ChildProcess } from "effect/unstable/process"
@@ -88,6 +89,67 @@ export namespace RipgrepBinary {
         if (process.platform !== "win32") yield* fs.chmod(target, 0o755)
       }, Effect.scoped)
 
+      // Install into the shared bin directory without ever exposing a partial
+      // file. Every step uses a path unique to this process and the result is
+      // renamed into place, because the previous version used one fixed archive
+      // and target name: concurrent installs (a second session, or test workers
+      // starting together) truncated each other's archive, and an interrupted
+      // run left both a corrupt archive and a half-written `rg` that every later
+      // attempt trusted through the "already installed" fast path.
+      const install = Effect.fnUntraced(function* (
+        config: (typeof PLATFORM)[keyof typeof PLATFORM],
+        target: string,
+      ) {
+        const filename = `ripgrep-${VERSION}-${config.platform}.${config.extension}`
+        const url = `https://github.com/BurntSushi/ripgrep/releases/download/${VERSION}/${filename}`
+        const suffix = `${process.pid}-${randomUUID()}`
+        const archive = path.join(Global.Path.bin, `${filename}.${suffix}.tmp`)
+        const staged = `${target}.${suffix}.tmp`
+
+        yield* Effect.logInfo("downloading ripgrep", { url })
+        yield* fs.ensureDir(Global.Path.bin).pipe(Effect.orDie)
+
+        return yield* Effect.gen(function* () {
+          const bytes = yield* HttpClientRequest.get(url).pipe(
+            http.execute,
+            Effect.flatMap((response) => response.arrayBuffer),
+            Effect.mapError((cause) => (cause instanceof Error ? cause : new Error(String(cause)))),
+          )
+          if (bytes.byteLength === 0) throw new Error(`failed to download ripgrep from ${url}`)
+
+          yield* fs.writeWithDirs(archive, new Uint8Array(bytes))
+          yield* extract(archive, config, staged)
+
+          // A sibling process may have finished installing while we downloaded.
+          if (yield* fs.isFile(target).pipe(Effect.orDie)) return target
+          yield* fs.rename(staged, target).pipe(
+            // Windows cannot rename onto an existing file; losing that race is
+            // still a success as long as somebody else's binary is in place.
+            Effect.catch(() =>
+              fs.isFile(target).pipe(
+                Effect.orDie,
+                Effect.flatMap((installed) =>
+                  installed ? Effect.void : Effect.die(new Error(`failed to install ripgrep at ${target}`)),
+                ),
+              ),
+            ),
+          )
+          return target
+        }).pipe(
+          // Always drop the temporaries. Leaving the archive behind is what made a
+          // single truncated download permanent: it was reused on the next
+          // attempt and shipped inside the CI cache, so nothing ever recovered.
+          Effect.ensuring(
+            Effect.all([
+              fs.remove(archive, { force: true }).pipe(Effect.ignore),
+              fs.remove(staged, { force: true }).pipe(Effect.ignore),
+              // Legacy fixed-name archive left by the previous installer.
+              fs.remove(path.join(Global.Path.bin, filename), { force: true }).pipe(Effect.ignore),
+            ]).pipe(Effect.asVoid),
+          ),
+        )
+      })
+
       return Service.of({
         filepath: yield* Effect.cached(
           Effect.gen(function* () {
@@ -101,23 +163,7 @@ export namespace RipgrepBinary {
             const config = PLATFORM[platformKey]
             if (!config) throw new Error(`unsupported platform for ripgrep: ${platformKey}`)
 
-            const filename = `ripgrep-${VERSION}-${config.platform}.${config.extension}`
-            const url = `https://github.com/BurntSushi/ripgrep/releases/download/${VERSION}/${filename}`
-            const archive = path.join(Global.Path.bin, filename)
-
-            yield* Effect.logInfo("downloading ripgrep", { url })
-            yield* fs.ensureDir(Global.Path.bin).pipe(Effect.orDie)
-            const bytes = yield* HttpClientRequest.get(url).pipe(
-              http.execute,
-              Effect.flatMap((response) => response.arrayBuffer),
-              Effect.mapError((cause) => (cause instanceof Error ? cause : new Error(String(cause)))),
-            )
-            if (bytes.byteLength === 0) throw new Error(`failed to download ripgrep from ${url}`)
-
-            yield* fs.writeWithDirs(archive, new Uint8Array(bytes))
-            yield* extract(archive, config, target)
-            yield* fs.remove(archive, { force: true }).pipe(Effect.ignore)
-            return target
+            return yield* install(config, target)
           }),
         ),
       })
