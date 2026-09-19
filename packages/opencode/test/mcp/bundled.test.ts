@@ -59,7 +59,10 @@ describe("mcp.bundled", () => {
     process.env["OPENCODE_OFFICECLI_PATH"] = missing
 
     expect(BundledMcp.officeCliBinary()).not.toBe(missing)
-    expect(BundledMcp.servers()["officecli"]?.command[0]).not.toBe(missing)
+    // Either nothing is registered, or it points at a binary that does resolve
+    // (for example one already on PATH) — never at the bogus override.
+    const entry = BundledMcp.servers()["officecli"]
+    if (entry?.type === "local") expect(entry.command[0]).not.toBe(missing)
   })
 
   test("registers nothing when the bundled server is disabled", () => {

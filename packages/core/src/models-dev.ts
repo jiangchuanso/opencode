@@ -225,26 +225,20 @@ const layer = Layer.effect(
       const snapshot = yield* loadSnapshot
       if (snapshot) return snapshot
       if (Flag.OPENCODE_DISABLE_MODELS_FETCH || Flag.OPENCODE_OFFLINE) return {}
-      // Flock is cross-process: concurrent opencode CLIs can race on this cache file.
+      // Flock is cross-process: concurrent opencode CLIs — and the refresh loop
+      // below — contend for this cache file. Acquiring it is uninterruptible, so a
+      // contender may add the holder's remaining fetch time on top of this budget;
+      // that is still bounded, unlike the unbounded wait this used to be.
       const quick = yield* Effect.scoped(
         Effect.gen(function* () {
           yield* Flock.effect(lockKey)
           return yield* fetchAndWrite(COLD_START_TIMEOUT)
         }),
-      ).pipe(Effect.option)
+      ).pipe(Effect.timeout(COLD_START_TIMEOUT), Effect.option)
       if (Option.isSome(quick)) return JSON.parse(quick.value) as Record<string, Provider>
-      // Slow or unreachable catalog host: hand back an empty catalog immediately
-      // (this value is cached for the lifetime of the process) and warm the
-      // on-disk cache in the background so the next start can read it. Blocking
-      // here is what made a first request wait minutes on an offline host.
-      yield* Effect.forkScoped(
-        Effect.scoped(
-          Effect.gen(function* () {
-            yield* Flock.effect(lockKey)
-            yield* fetchAndWrite()
-          }),
-        ).pipe(Effect.ignore, Effect.withSpan("ModelsDev.warmCache")),
-      )
+      // Slow or unreachable catalog host: serve an empty catalog now (the value is
+      // cached for the lifetime of the process) instead of blocking the first
+      // model request. The refresh loop warms the on-disk cache for the next start.
       return {}
     }).pipe(Effect.withSpan("ModelsDev.populate"), Effect.orDie)
 

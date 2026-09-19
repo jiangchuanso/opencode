@@ -201,9 +201,8 @@ describe("ModelsDev Service", () => {
         ),
       )
       expect(result).toEqual({})
-      // The fetch was attempted, then abandoned rather than blocking the caller.
-      // (The background warm-up may have added a second attempt by now.)
-      expect((yield* Ref.get(state)).calls.length).toBeGreaterThanOrEqual(1)
+      // Attempted once, then abandoned rather than blocking the caller.
+      expect((yield* Ref.get(state)).calls).toHaveLength(1)
     }),
   )
 
