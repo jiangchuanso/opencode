@@ -8,6 +8,8 @@ import { RelativePath } from "@opencode-ai/core/schema"
 import { tmpdir } from "./fixture/tmpdir"
 import { testEffect } from "./lib/effect"
 
+// The first search in this file may download the ripgrep binary and extract it,
+// which does not fit bun's 5s default on slower runners (Windows has no system rg).
 const it = testEffect(LayerNode.compile(Ripgrep.node))
 
 describe("Ripgrep", () => {
@@ -29,6 +31,7 @@ describe("Ripgrep", () => {
         }),
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
     ),
+    60_000,
   )
 
   it.live("never includes git metadata", () =>
@@ -61,6 +64,7 @@ describe("Ripgrep", () => {
         }),
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
     ),
+    60_000,
   )
   it.live("does not split surrogate pairs in oversized line previews", () =>
     Effect.acquireUseRelease(
@@ -81,5 +85,6 @@ describe("Ripgrep", () => {
         }),
       (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]()),
     ),
+    60_000,
   )
 })

@@ -63,6 +63,15 @@ jobs:
             turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-
             turbo-${{ runner.os }}-
 
+      - name: Cache ripgrep binary
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          # The search tools download ripgrep on first use. Caching it keeps that
+          # download out of the test run — Windows runners have no system rg to
+          # fall back on, so the first test otherwise pays for it.
+          path: ~/.cache/opencode/bin
+          key: ripgrep-${{ runner.os }}-${{ runner.arch }}
+
       - name: Run unit tests
         timeout-minutes: 20
         run: GITHUB_ACTIONS=false bun turbo test
@@ -133,11 +142,16 @@ jobs:
         working-directory: packages/app
         run: bunx playwright install chromium
 
+      # Windows runners are 4 vCPU and every worker runs a full Chromium plus the
+      # Vite dev server, so five workers over-subscribe the box: timed-out
+      # teardowns and content-visibility flakes. Fewer workers and a little more
+      # headroom per test, with a longer job budget to absorb the slower run.
       - name: Run app e2e tests
-        run: bun --cwd packages/app test:e2e:local
+        run: bun --cwd packages/app test:e2e:local -- --timeout 90000
         env:
           CI: true
-        timeout-minutes: 30
+          PLAYWRIGHT_WORKERS: ${{ runner.os == 'Windows' && '3' || '5' }}
+        timeout-minutes: 60
 
       - name: Upload Playwright artifacts
         if: always()
