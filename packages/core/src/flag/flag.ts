@@ -54,6 +54,18 @@ export const Flag = {
   get OPENCODE_DISABLE_PROJECT_CONFIG() {
     return truthy("OPENCODE_DISABLE_PROJECT_CONFIG")
   },
+  // Hosts without any route to the public internet must not pay for network
+  // round trips that can only fail. Every best-effort remote call (catalog,
+  // update check, LSP/package downloads) is skipped when this is set.
+  get OPENCODE_OFFLINE() {
+    return truthy("OPENCODE_OFFLINE")
+  },
+  // Cold-start budget for the provider catalog fetch. Kept short so a slow or
+  // unreachable catalog host cannot delay the first model request.
+  get OPENCODE_MODELS_FETCH_TIMEOUT_MS() {
+    const value = Number(process.env["OPENCODE_MODELS_FETCH_TIMEOUT_MS"])
+    return Number.isFinite(value) && value > 0 ? value : undefined
+  },
   get OPENCODE_EXPERIMENTAL_REFERENCES() {
     return enabledByExperimental("OPENCODE_EXPERIMENTAL_REFERENCES")
   },

@@ -1,6 +1,7 @@
 import WebSocket from "ws"
 import { ProviderError } from "@/provider/error"
 import { isRecord } from "@/util/record"
+import { Flag } from "@opencode-ai/core/flag/flag"
 import { OpenAIWebSocket } from "./ws"
 
 export const TITLE_HEADER = "x-opencode-title"
@@ -27,14 +28,24 @@ const DEFAULT_CONNECT_TIMEOUT = 15_000
 const DEFAULT_IDLE_TIMEOUT = 5 * 60 * 1000
 const DEFAULT_MAX_CONNECTION_AGE = 55 * 60 * 1000
 const CONNECTION_LIMIT_REACHED_CODE = "websocket_connection_limit_reached"
+// Default retries come from Codex: a transient WebSocket failure is worth
+// retrying before downgrading the session to HTTP.
+const DEFAULT_STREAM_RETRIES = 5
+// On a host with no route to the endpoint even the first attempt is hopeless, so
+// bound it tightly and downgrade to HTTP on the very first failure instead of
+// spending a connect timeout per retry before the request finally goes out.
+const OFFLINE_CONNECT_TIMEOUT = 5_000
+const OFFLINE_STREAM_RETRIES = 0
 
 export function createWebSocketFetch(options?: CreateWebSocketFetchOptions) {
   const httpFetch = options?.httpFetch ?? globalThis.fetch
   const pool = new Map<string, PoolEntry>()
-  const connectTimeout = options?.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT
+  const connectTimeout =
+    options?.connectTimeout ?? (Flag.OPENCODE_OFFLINE ? OFFLINE_CONNECT_TIMEOUT : DEFAULT_CONNECT_TIMEOUT)
   const idleTimeout = options?.idleTimeout ?? DEFAULT_IDLE_TIMEOUT
   const maxConnectionAge = options?.maxConnectionAge ?? DEFAULT_MAX_CONNECTION_AGE
-  const streamRetries = options?.streamRetries ?? 5
+  const streamRetries =
+    options?.streamRetries ?? (Flag.OPENCODE_OFFLINE ? OFFLINE_STREAM_RETRIES : DEFAULT_STREAM_RETRIES)
   const pruneTimer = setInterval(() => prune(), Math.min(idleTimeout, 60_000))
   if (typeof pruneTimer === "object" && "unref" in pruneTimer && typeof pruneTimer.unref === "function") {
     pruneTimer.unref()
