@@ -1,0 +1,194 @@
+# Desktop packaging.
+#
+# Upstream builds this matrix inside its own release workflow, which depends on
+# resources the fork does not own. This workflow keeps the parts that build
+# without them and is the single implementation of desktop packaging:
+#   - Windows: nsis installer (.exe). script/sign-windows.ps1 exits early when the
+#     Azure Trusted Signing variables are unset, so the installer is unsigned.
+#   - Linux: deb, plus AppImage and rpm, the other targets listed in
+#     packages/desktop/electron-builder.config.ts.
+#   - macOS is deliberately absent: its config needs Apple certificates for
+#     notarization.
+#
+# Both architectures are cross-compiled from the x64 hosted runners —
+# electron-builder downloads the matching Electron build — so no ARM runner is
+# needed.
+#
+# Two ways in:
+#   - `workflow_dispatch`: pick a channel, optionally pass `tag` to create/attach
+#     a release, `prerelease` marks it as one.
+#   - `workflow_call`: publish.yml owns the release and calls this workflow with
+#     `channel: prod` and the tag it just created, so a release ships these
+#     installers instead of a CLI build.
+#
+# Channel notes:
+#   - prod/beta do not bundle an opencode CLI, and do not need one: the desktop
+#     app embeds the server built from packages/opencode (script/build-node.ts).
+#   - dev bundles a CLI downloaded from npm at the version pinned in
+#     packages/desktop/scripts/utils.ts, which is no longer published.
+#
+# Nothing is signed and electron-builder never publishes (--publish never).
+
+name: publish-desktop
+run-name: "desktop ${{ inputs.channel }} ${{ inputs.tag }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Desktop channel (dev bundles a CLI from npm and currently cannot resolve its pinned version)"
+        required: true
+        default: prod
+        type: choice
+        options:
+          - prod
+          - beta
+          - dev
+      tag:
+        description: "Release tag to create or attach to, e.g. v1.0.124 (empty = run artifacts only)"
+        required: false
+        type: string
+      prerelease:
+        description: "Mark the release as a pre-release"
+        required: false
+        default: true
+        type: boolean
+  # Called by publish.yml: `prerelease` stays false because the caller already
+  # decided the release state from its own `draft` input.
+  workflow_call:
+    inputs:
+      channel:
+        description: "Desktop channel; releases use prod"
+        required: false
+        default: prod
+        type: string
+      tag:
+        description: "Release tag that publish.yml created (empty = run artifacts only)"
+        required: false
+        default: ""
+        type: string
+      prerelease:
+        description: "Mark the release as a pre-release"
+        required: false
+        default: false
+        type: boolean
+
+# Deliberately not `${{ github.workflow }}-${{ github.ref }}`: when publish.yml
+# calls this workflow its own lock is already held, so a shared group name could
+# queue the call behind the run that started it.
+concurrency: publish-desktop-${{ github.ref }}
+
+permissions:
+  contents: write
+
+jobs:
+  # Runs before the matrix so the four jobs upload to one release instead of
+  # racing to create it. When publish.yml calls this workflow the release
+  # already exists, so the step below only updates the pre-release flag.
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # --generate-notes needs the tag history.
+          fetch-depth: 0
+
+      - name: Ensure release
+        if: inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" "--prerelease=$PRERELEASE"
+          else
+            args=(--target "$GITHUB_SHA" --generate-notes "--prerelease=$PRERELEASE")
+            gh release create "$TAG" "${args[@]}"
+          fi
+
+  package:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            arch: x64
+            name: opencode-desktop-windows-x64
+          - os: windows-latest
+            platform: win
+            arch: arm64
+            name: opencode-desktop-windows-arm64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            name: opencode-desktop-linux-x64
+          - os: ubuntu-latest
+            platform: linux
+            arch: arm64
+            name: opencode-desktop-linux-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: ./.github/actions/setup-bun
+
+      # electron-builder builds rpm through fpm, which shells out to rpmbuild.
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rpm
+
+      # Upstream generates this directory from a Rust napi module (macOS window
+      # helper plus swift-build). The fork does not ship it and win/linux never
+      # load it, but electron-builder.config.ts lists it as an extra resource and
+      # needs the source directory to exist.
+      - name: Create native resource directory
+        shell: bash
+        run: mkdir -p packages/desktop/native
+
+      # Copies the channel icons/metainfo into resources/ and builds the embedded
+      # server from packages/opencode.
+      - name: Prepare desktop resources
+        run: bun run --cwd packages/desktop prebuild
+        env:
+          OPENCODE_CHANNEL: ${{ inputs.channel }}
+
+      - name: Build desktop assets
+        run: bun run --cwd packages/desktop build
+        env:
+          OPENCODE_CHANNEL: ${{ inputs.channel }}
+
+      # --publish never keeps electron-builder away from the GitHub release config
+      # in electron-builder.config.ts, which points at the upstream repository.
+      - name: Package ${{ matrix.arch }}
+        run: bun run --cwd packages/desktop package:${{ matrix.platform }} -- --${{ matrix.arch }} --publish never
+        env:
+          OPENCODE_CHANNEL: ${{ inputs.channel }}
+          GH_TOKEN: ${{ github.token }}
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.name }}-${{ inputs.channel }}
+          if-no-files-found: error
+          path: |
+            packages/desktop/dist/*.exe
+            packages/desktop/dist/*.deb
+            packages/desktop/dist/*.AppImage
+            packages/desktop/dist/*.rpm
+
+      - name: Attach to release
+        if: inputs.tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          shopt -s nullglob
+          files=(packages/desktop/dist/*.exe packages/desktop/dist/*.deb packages/desktop/dist/*.AppImage packages/desktop/dist/*.rpm)
+          gh release upload "$TAG" "${files[@]}" --clobber
+
