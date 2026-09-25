@@ -63,6 +63,23 @@ jobs:
             turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-
             turbo-${{ runner.os }}-
 
+      # The core suite shells out to ripgrep. Without a system `rg` the runtime
+      # downloads a release archive on first use, which cannot finish inside the
+      # default bun test timeout on a cold GitHub-hosted runner.
+      - name: Install ripgrep
+        run: |
+          if command -v rg >/dev/null 2>&1; then
+            echo "ripgrep already available: $(rg --version | head -n1)"
+            exit 0
+          fi
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            choco install ripgrep -y --no-progress
+          else
+            sudo apt-get update -qq
+            sudo apt-get install -y ripgrep
+          fi
+          rg --version | head -n1
+
       - name: Run unit tests
         timeout-minutes: 20
         run: GITHUB_ACTIONS=false bun turbo test

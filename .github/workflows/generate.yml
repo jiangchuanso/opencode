@@ -18,12 +18,22 @@ jobs:
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
 
-      - name: Setup git committer
+      # Upstream commits generated code with its GitHub App. Forks have no app
+      # credentials, so fall back to the workflow token that the checkout action
+      # already persisted and `contents: write` authorizes.
+      - name: Setup git committer (app)
         id: committer
+        if: ${{ vars.OPENCODE_APP_ID != '' }}
         uses: ./.github/actions/setup-git-committer
         with:
           opencode-app-id: ${{ vars.OPENCODE_APP_ID }}
           opencode-app-secret: ${{ secrets.OPENCODE_APP_SECRET }}
+
+      - name: Setup git committer (workflow token)
+        if: ${{ vars.OPENCODE_APP_ID == '' }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Generate
         run: ./script/generate.ts
