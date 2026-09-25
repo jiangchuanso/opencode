@@ -432,6 +432,11 @@ describe("tool.shell permissions", () => {
           item,
           Effect.gen(function* () {
             const tmp = yield* tmpdirScoped()
+            // Drive-relative: the drive is explicit while the rest of the path is not,
+            // so the runtime resolves it against the shell workdir. Use the workdir's
+            // own drive — hardcoding C: only holds when the workdir happens to live
+            // there (CI temp directories do not have to be on C:).
+            const drive = path.parse(tmp).root.replace(/[\\/]+$/, "")
             yield* runIn(
               tmp,
               Effect.gen(function* () {
@@ -440,7 +445,7 @@ describe("tool.shell permissions", () => {
                 expect(
                   yield* fail(
                     {
-                      command: 'Get-Content "C:../outside.txt"',
+                      command: `Get-Content "${drive}../outside.txt"`,
                     },
                     capture(requests, err),
                   ),

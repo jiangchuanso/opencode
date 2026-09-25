@@ -63,19 +63,26 @@ jobs:
             turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-
             turbo-${{ runner.os }}-
 
-      # On Windows the workspace lives on a different drive than the default temp
-      # directory (D: vs C:). The external-directory tests hand the runtime a
-      # drive-less path, which resolves against the current drive, so temp has to
-      # sit on the workspace drive for it to resolve to the file the test created.
+      # On Windows several permission tests hand the runtime a drive-less path
+      # (e.g. `/a/_temp/opencode-test-x/file`) or a drive-relative shell path, which
+      # resolves against the current drive. Two conditions make that work:
+      #
+      #  1. temp has to sit on the workspace drive, because that is the drive of the
+      #     process running the tests;
+      #  2. its first path segment must not be a single letter. `windowsPath()`
+      #     reads `/<letter>/...` as a Git Bash path and rewrites `/a/_temp/...` into
+      #     drive `A:`, which is why the default `D:\a\_temp` cannot be used here.
       - name: Align temp directory with the workspace drive
         if: runner.os == 'Windows'
-        shell: bash
+        shell: pwsh
         run: |
-          {
-            echo "TEMP=$RUNNER_TEMP"
-            echo "TMP=$RUNNER_TEMP"
-            echo "TMPDIR=$RUNNER_TEMP"
-          } >> "$GITHUB_ENV"
+          $root = Split-Path -Qualifier $env:GITHUB_WORKSPACE
+          $dir = "$root\opencode-tmp"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          "TEMP=$dir" | Add-Content -Path $env:GITHUB_ENV
+          "TMP=$dir" | Add-Content -Path $env:GITHUB_ENV
+          "TMPDIR=$dir" | Add-Content -Path $env:GITHUB_ENV
+          Write-Host "temp pinned to $dir"
 
       # The core suite shells out to ripgrep. Without a system `rg` the runtime
       # downloads a release archive on first use, which cannot finish inside the

@@ -197,6 +197,7 @@ export const iconNames = [
   "azure",
   "azure-cognitive-services",
   "auriko",
+  "atomic-chat",
   "arcee",
   "anyapi",
   "anthropic",
