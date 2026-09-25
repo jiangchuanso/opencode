@@ -116,18 +116,12 @@ function requireAsset(input: Release, wanted: string, repo: string) {
   return asset
 }
 
-async function stageRelease(
-  ctx: Context,
-  options: { repo: string; asset: string; into: string; strip?: number },
-) {
+async function stageRelease(ctx: Context, options: { repo: string; asset: string; into: string; strip?: number }) {
   const input = await release(options.repo)
   const destination = path.join(ctx.root, options.into)
   await fs.mkdir(destination, { recursive: true })
   const archive = path.join(ctx.temp, options.asset)
-  await ctx.download(
-    requireAsset(input, options.asset, options.repo).browser_download_url,
-    archive,
-  )
+  await ctx.download(requireAsset(input, options.asset, options.repo).browser_download_url, archive)
   await ctx.extract(archive, destination, { strip: options.strip })
   return input
 }
@@ -156,10 +150,7 @@ const ripgrep: Component = {
     const extension = ctx.target.platform === "win32" ? "zip" : "tar.gz"
     const name = `ripgrep-${RIPGREP_VERSION}-${platform}.${extension}`
     const archive = path.join(ctx.temp, name)
-    await ctx.download(
-      `https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/${name}`,
-      archive,
-    )
+    await ctx.download(`https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/${name}`, archive)
     const unpacked = path.join(ctx.temp, `ripgrep-${RIPGREP_VERSION}`)
     await ctx.extract(archive, unpacked)
     await copy(
@@ -192,8 +183,7 @@ const zls: Component = {
   description: "Zig language server (zigtools/zls)",
   run: async (ctx) => {
     const arch = ctx.target.arch === "arm64" ? "aarch64" : "x86_64"
-    const platform =
-      ctx.target.platform === "darwin" ? "macos" : ctx.target.platform === "win32" ? "windows" : "linux"
+    const platform = ctx.target.platform === "darwin" ? "macos" : ctx.target.platform === "win32" ? "windows" : "linux"
     const extension = ctx.target.platform === "win32" ? "zip" : "tar.xz"
     await stageRelease(ctx, { repo: "zigtools/zls", asset: `zls-${arch}-${platform}.${extension}`, into: "bin" })
   },
@@ -205,8 +195,7 @@ const clangd: Component = {
   description: "clangd (clangd/clangd) extracted into bin, plus the bin/clangd shortcut",
   run: async (ctx) => {
     const input = await release("clangd/clangd")
-    const token =
-      ctx.target.platform === "darwin" ? "mac" : ctx.target.platform === "win32" ? "windows" : "linux"
+    const token = ctx.target.platform === "darwin" ? "mac" : ctx.target.platform === "win32" ? "windows" : "linux"
     const matches = input.assets.filter(
       (item) => item.name.includes(token) && (input.tag === "" || item.name.includes(input.tag)),
     )
@@ -218,10 +207,7 @@ const clangd: Component = {
     const archive = path.join(ctx.temp, asset.name)
     await ctx.download(asset.browser_download_url, archive)
     await ctx.extract(archive, bin(ctx))
-    await copy(
-      path.join(bin(ctx), `clangd_${input.tag}`, "bin", `clangd${exe(ctx)}`),
-      bin(ctx, `clangd${exe(ctx)}`),
-    )
+    await copy(path.join(bin(ctx), `clangd_${input.tag}`, "bin", `clangd${exe(ctx)}`), bin(ctx, `clangd${exe(ctx)}`))
   },
   artifacts: (ctx) => [path.join("bin", `clangd${exe(ctx)}`)],
 }
@@ -252,8 +238,15 @@ const luaLanguageServer: Component = {
     }
   },
   artifacts: (ctx) => [
-    path.join("bin", `lua-language-server-${ctx.target.arch}-${ctx.target.platform}`, "bin", `lua-language-server${exe(ctx)}`),
-    ctx.target.platform === "win32" ? path.join("bin", "lua-language-server.cmd") : path.join("bin", "lua-language-server"),
+    path.join(
+      "bin",
+      `lua-language-server-${ctx.target.arch}-${ctx.target.platform}`,
+      "bin",
+      `lua-language-server${exe(ctx)}`,
+    ),
+    ctx.target.platform === "win32"
+      ? path.join("bin", "lua-language-server.cmd")
+      : path.join("bin", "lua-language-server"),
   ],
 }
 
@@ -262,8 +255,7 @@ const texlab: Component = {
   description: "texlab (latex-lsp/texlab)",
   run: async (ctx) => {
     const arch = ctx.target.arch === "arm64" ? "aarch64" : "x86_64"
-    const platform =
-      ctx.target.platform === "darwin" ? "macos" : ctx.target.platform === "win32" ? "windows" : "linux"
+    const platform = ctx.target.platform === "darwin" ? "macos" : ctx.target.platform === "win32" ? "windows" : "linux"
     const extension = ctx.target.platform === "win32" ? "zip" : "tar.gz"
     await stageRelease(ctx, { repo: "latex-lsp/texlab", asset: `texlab-${arch}-${platform}.${extension}`, into: "bin" })
   },
@@ -300,14 +292,15 @@ const kotlinLs: Component = {
     const version = input.name.replace(/^v/, "")
     if (!version) throw new Error("kotlin-lsp release has no name to derive a version from")
     const arch = ctx.target.arch === "arm64" ? "aarch64" : "x64"
-    const platform =
-      ctx.target.platform === "darwin" ? "mac" : ctx.target.platform === "win32" ? "win" : "linux"
+    const platform = ctx.target.platform === "darwin" ? "mac" : ctx.target.platform === "win32" ? "win" : "linux"
     const name = `kotlin-lsp-${version}-${platform}-${arch}.zip`
     const archive = path.join(ctx.temp, name)
     await ctx.download(`https://download-cdn.jetbrains.com/kotlin-lsp/${version}/${name}`, archive)
     await ctx.extract(archive, bin(ctx, "kotlin-ls"))
   },
-  artifacts: (ctx) => [path.join("bin", "kotlin-ls", ctx.target.platform === "win32" ? "kotlin-lsp.cmd" : "kotlin-lsp.sh")],
+  artifacts: (ctx) => [
+    path.join("bin", "kotlin-ls", ctx.target.platform === "win32" ? "kotlin-lsp.cmd" : "kotlin-lsp.sh"),
+  ],
 }
 
 const terraformLs: Component = {
@@ -318,7 +311,10 @@ const terraformLs: Component = {
       headers: { "user-agent": "opencode-offline-bundle" },
     })
     if (!response.ok) throw new Error(`terraform-ls release lookup failed (${response.status})`)
-    const input = (await response.json()) as { version?: string; builds?: { arch?: string; os?: string; url?: string }[] }
+    const input = (await response.json()) as {
+      version?: string
+      builds?: { arch?: string; os?: string; url?: string }[]
+    }
     const arch = ctx.target.arch === "arm64" ? "arm64" : "amd64"
     const os = ctx.target.platform === "win32" ? "windows" : ctx.target.platform
     const build = (input.builds ?? []).find((item) => item.arch === arch && item.os === os)
@@ -346,8 +342,7 @@ const jdtls: Component = {
 
 const elixirLs: Component = {
   id: "elixir-ls",
-  description:
-    "elixir-ls prebuilt release placed at bin/elixir-ls-master/release (avoids the runtime's mix compile)",
+  description: "elixir-ls prebuilt release placed at bin/elixir-ls-master/release (avoids the runtime's mix compile)",
   optional: true,
   run: async (ctx) => {
     const input = await release("elixir-lsp/elixir-ls")
@@ -358,7 +353,12 @@ const elixirLs: Component = {
     await ctx.extract(archive, bin(ctx, "elixir-ls-master", "release"))
   },
   artifacts: (ctx) => [
-    path.join("bin", "elixir-ls-master", "release", ctx.target.platform === "win32" ? "language_server.bat" : "language_server.sh"),
+    path.join(
+      "bin",
+      "elixir-ls-master",
+      "release",
+      ctx.target.platform === "win32" ? "language_server.bat" : "language_server.sh",
+    ),
   ],
 }
 
@@ -435,17 +435,11 @@ const roslyn = toolchainComponent(
   "C#/Razor language server via dotnet tool install --tool-path (the runtime installs it globally)",
   "dotnet",
   async (ctx) => {
-    await ctx.run([
-      "dotnet",
-      "tool",
-      "install",
-      "roslyn-language-server",
-      "--prerelease",
-      "--tool-path",
-      bin(ctx),
-    ])
+    await ctx.run(["dotnet", "tool", "install", "roslyn-language-server", "--prerelease", "--tool-path", bin(ctx)])
   },
-  (ctx) => [path.join("bin", ctx.target.platform === "win32" ? "roslyn-language-server.cmd" : "roslyn-language-server")],
+  (ctx) => [
+    path.join("bin", ctx.target.platform === "win32" ? "roslyn-language-server.cmd" : "roslyn-language-server"),
+  ],
 )
 
 const rubocop = toolchainComponent(

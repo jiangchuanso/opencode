@@ -41,7 +41,8 @@ const footer = Buffer.alloc(FOOTER_SIZE)
 await handle.read(footer, 0, FOOTER_SIZE, size - FOOTER_SIZE)
 await handle.close()
 
-if (footer.subarray(0, MAGIC.length).toString("utf8") !== MAGIC) fail("this executable does not contain an offline payload")
+if (footer.subarray(0, MAGIC.length).toString("utf8") !== MAGIC)
+  fail("this executable does not contain an offline payload")
 
 const offset = Number(footer.readBigUInt64LE(16))
 const length = Number(footer.readBigUInt64LE(24))
