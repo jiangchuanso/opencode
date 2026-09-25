@@ -177,6 +177,7 @@ export const iconNames = [
   "deepinfra",
   "databricks",
   "daoxe",
+  "crusoe",
   "crossmodel",
   "crof",
   "cortecs",
