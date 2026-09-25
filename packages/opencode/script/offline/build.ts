@@ -189,8 +189,11 @@ const ctx: Context = {
 }
 
 async function match(artifact: string) {
-  if (!artifact.includes("*")) return exists(artifact)
-  const relative = path.relative(root, artifact)
+  // Components declare artifacts relative to the payload root; resolve them
+  // there instead of against the working directory the script was started from.
+  const resolved = path.resolve(root, artifact)
+  if (!resolved.includes("*")) return exists(resolved)
+  const relative = path.relative(root, resolved)
   for await (const _ of new Bun.Glob(relative).scan({ cwd: root, dot: true })) return true
   return false
 }
