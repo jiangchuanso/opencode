@@ -63,6 +63,20 @@ jobs:
             turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-
             turbo-${{ runner.os }}-
 
+      # On Windows the workspace lives on a different drive than the default temp
+      # directory (D: vs C:). The external-directory tests hand the runtime a
+      # drive-less path, which resolves against the current drive, so temp has to
+      # sit on the workspace drive for it to resolve to the file the test created.
+      - name: Align temp directory with the workspace drive
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          {
+            echo "TEMP=$RUNNER_TEMP"
+            echo "TMP=$RUNNER_TEMP"
+            echo "TMPDIR=$RUNNER_TEMP"
+          } >> "$GITHUB_ENV"
+
       # The core suite shells out to ripgrep. Without a system `rg` the runtime
       # downloads a release archive on first use, which cannot finish inside the
       # default bun test timeout on a cold GitHub-hosted runner.
