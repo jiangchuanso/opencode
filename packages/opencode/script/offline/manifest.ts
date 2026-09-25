@@ -193,8 +193,13 @@ const zls: Component = {
 const clangd: Component = {
   id: "clangd",
   description: "clangd (clangd/clangd) extracted into bin, plus the bin/clangd shortcut",
+  // Upstream publishes a single Linux build and it is x86_64, so an arm64 payload
+  // cannot carry clangd. A miss is reported as a warning instead of aborting.
+  optional: true,
   run: async (ctx) => {
     const input = await release("clangd/clangd")
+    if (ctx.target.platform === "linux" && ctx.target.arch === "arm64")
+      throw new Error(`clangd ${input.tag} publishes no aarch64 linux build`)
     const token = ctx.target.platform === "darwin" ? "mac" : ctx.target.platform === "win32" ? "windows" : "linux"
     const matches = input.assets.filter(
       (item) => item.name.includes(token) && (input.tag === "" || item.name.includes(input.tag)),
@@ -287,6 +292,10 @@ const tinymist: Component = {
 const kotlinLs: Component = {
   id: "kotlin-ls",
   description: "Kotlin language server, fetched from the JetBrains CDN named by the latest GitHub release",
+  // The CDN path is derived from the latest release name, and JetBrains has moved
+  // it before (every target 404s against kotlin-lsp/263.4702.0). server.ts treats a
+  // failed download as "no kotlin-ls", so a miss here warns instead of aborting.
+  optional: true,
   run: async (ctx) => {
     const input = await release("Kotlin/kotlin-lsp")
     const version = input.name.replace(/^v/, "")
@@ -467,12 +476,9 @@ export const COMPONENTS: Component[] = [
   npmComponent("yaml-ls", "yaml-language-server", "yaml-language-server", "YAML language server"),
   npmComponent("intelephense", "intelephense", "intelephense", "PHP intelephense"),
   npmComponent("bash", "bash-language-server", "bash-language-server", "Bash language server"),
-  npmComponent(
-    "dockerfile",
-    "dockerfile-language-server-nodejs",
-    "dockerfile-language-server-nodejs",
-    "Dockerfile language server",
-  ),
+  // npm installs this package under its own name, but the executable it ships is
+  // `docker-langserver` — that is also what server.ts looks for with which().
+  npmComponent("dockerfile", "dockerfile-language-server-nodejs", "docker-langserver", "Dockerfile language server"),
   npmComponent("biome", "biome", "biome", "Biome; note server.ts has no offline guard"),
   zls,
   clangd,
