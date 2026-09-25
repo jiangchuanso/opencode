@@ -40,6 +40,13 @@ jobs:
 
       - name: Commit and push
         run: |
+          # GitHub rejects workflow-token pushes that touch .github/workflows
+          # (no `workflows` permission), and forks keep their own workflow files
+          # anyway, so restore generated workflow changes instead of shipping them.
+          if [ -z "${{ vars.OPENCODE_APP_ID }}" ]; then
+            git checkout -- .github/workflows
+            git clean -fdq .github/workflows
+          fi
           if [ -z "$(git status --porcelain)" ]; then
             echo "No changes to commit"
             exit 0
