@@ -30,6 +30,7 @@ import {
   COMPONENTS,
   PATH_ONLY_SERVERS,
   exists,
+  githubFetch,
   type Arch,
   type Component,
   type Context,
@@ -116,7 +117,7 @@ async function runNothrow(cmd: string[], options: RunOptions = {}) {
 }
 
 async function download(url: string, destination: string) {
-  const response = await fetch(url, { headers: { "user-agent": "opencode-offline-bundle" } })
+  const response = await githubFetch(url, { "user-agent": "opencode-offline-bundle" })
   if (!response.ok) throw new Error(`download failed (${response.status}): ${url}`)
   await fs.mkdir(path.dirname(destination), { recursive: true })
   await Bun.write(destination, response)

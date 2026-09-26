@@ -235,6 +235,11 @@ jobs:
       # path-only, so it ships next to the archive.
       - name: Build offline bundle
         working-directory: packages/opencode
+        env:
+          # Release lookups go through the GitHub API, which answers anonymously at
+          # only 60 requests per hour per IP. Hosted runners share that pool, so
+          # without a token the build can 403 before staging anything.
+          GITHUB_TOKEN: ${{ github.token }}
         run: bun run script/offline/build.ts --platform ${{ matrix.target }} --arch ${{ matrix.arch }}
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

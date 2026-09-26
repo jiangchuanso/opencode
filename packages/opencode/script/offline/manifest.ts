@@ -89,9 +89,34 @@ interface Release {
   readonly assets: Asset[]
 }
 
+/**
+ * api.github.com answers anonymously at 60 requests per hour per IP, an allowance
+ * GitHub hosted runners share, so an offline build can lose that race and see 403 on
+ * every release lookup. Send the workflow token when one is present, but only to
+ * GitHub hosts, because `download` also fetches third party CDNs. A refused token
+ * falls back to an anonymous request instead of failing a public fetch.
+ */
+export async function githubFetch(url: string, headers: Record<string, string>) {
+  const authorization = githubAuthorization(url)
+  if (!authorization) return fetch(url, { headers })
+  const response = await fetch(url, { headers: { ...headers, authorization } })
+  if (response.ok) return response
+  return fetch(url, { headers })
+}
+
+function githubAuthorization(url: string) {
+  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN
+  if (!token) return ""
+  const host = new URL(url).hostname
+  const github = host === "github.com" || host === "api.github.com" || host.endsWith(".githubusercontent.com")
+  return github ? `Bearer ${token}` : ""
+}
+
 async function release(repo: string): Promise<Release> {
-  const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-    headers: { "user-agent": "opencode-offline-bundle", accept: "application/vnd.github+json" },
+  const url = `https://api.github.com/repos/${repo}/releases/latest`
+  const response = await githubFetch(url, {
+    "user-agent": "opencode-offline-bundle",
+    accept: "application/vnd.github+json",
   })
   if (!response.ok) throw new Error(`github release lookup failed for ${repo} (${response.status})`)
   const raw = (await response.json()) as {
