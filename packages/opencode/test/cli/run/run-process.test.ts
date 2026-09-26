@@ -91,6 +91,10 @@ describe("opencode run (non-interactive subprocess)", () => {
   // The test provider's SSE error item is interpreted by the SDK as an unknown
   // finish, not a fatal provider/session error. Unknown finishes should continue
   // the prompt loop so a subsequent response can complete the run.
+  //
+  // Same runner-spawn economics as the unknown-model case above: the inner
+  // process timeout trips before the outer 60s test timeout, so it has to be
+  // generous enough for the hosted runner too.
   cliIt.concurrent(
     "unknown stream finish preserves partial output and continues",
     ({ llm, opencode }) =>
@@ -103,7 +107,7 @@ describe("opencode run (non-interactive subprocess)", () => {
         )
         yield* llm.fail("upstream provider exploded mid-stream")
         yield* llm.text("recovered")
-        const result = yield* opencode.run("trigger midstream error", { timeoutMs: 30_000 })
+        const result = yield* opencode.run("trigger midstream error", { timeoutMs: 45_000 })
         expect(result.exitCode).toBe(0)
         expect(result.stdout).toBe("partial response\nrecovered\n")
         expect(result.stderr).not.toContain("upstream provider exploded mid-stream")
@@ -232,7 +236,7 @@ describe("opencode run (non-interactive subprocess)", () => {
         )
         yield* llm.fail("provider failed")
         yield* llm.text("recovered")
-        const result = yield* opencode.run("fail after output", { format: "json" })
+        const result = yield* opencode.run("fail after output", { format: "json", timeoutMs: 45_000 })
 
         const events = opencode.parseJsonEvents(result.stdout)
         expect(result.exitCode).toBe(0)
