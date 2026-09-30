@@ -177,6 +177,75 @@ jobs:
           OPENCODE_CHANNEL: ${{ inputs.channel }}
           GH_TOKEN: ${{ github.token }}
 
+      # Kylin V10 SP1 desktop is an Ubuntu 20.04 base: dpkg, glibc 2.31, GTK 3 and
+      # a hicolor/pixmaps icon lookup. Inspect the deb instead of trusting the
+      # packager, because a missing icon or a glibc built past 2.31 only shows up
+      # on the target machine.
+      - name: Verify deb installability
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          debs=(packages/desktop/dist/*.deb)
+          if [ ${#debs[@]} -eq 0 ]; then
+            echo "::error::no deb was produced"
+            exit 1
+          fi
+          deb="${debs[0]}"
+
+          echo "== $(basename "$deb") $(dpkg-deb -f "$deb" Architecture)"
+          dpkg-deb -f "$deb" Depends
+
+          stage="$(mktemp -d)"
+          dpkg-deb -x "$deb" "$stage"
+
+          launcher="$(find "$stage/usr/share/applications" -name '*.desktop' ! -name 'opencode-desktop.desktop' | head -n 1)"
+          if [ -z "$launcher" ]; then
+            echo "::error::deb installs no desktop entry"
+            exit 1
+          fi
+          if ! grep -q '^Icon=' "$launcher"; then
+            echo "::error::desktop entry has no Icon"
+            exit 1
+          fi
+          grep -E '^(Exec|Icon|StartupWMClass)=' "$launcher"
+
+          # A product name with a space produces an Exec path that is split in two.
+          launcher_exec="$(sed -n 's/^Exec=//p' "$launcher" | head -n 1)"
+          launcher_exec="${launcher_exec%% *}"
+          if [ ! -f "$stage$launcher_exec" ]; then
+            echo "::error::Exec target $launcher_exec is not installed by the deb"
+            exit 1
+          fi
+
+          icons="$(find "$stage/usr/share/icons/hicolor" -name '*.png' | wc -l)"
+          echo "hicolor icons: $icons"
+          if [ "$icons" -eq 0 ]; then
+            echo "::error::deb installs no hicolor icon"
+            exit 1
+          fi
+          pixmaps="$(find "$stage/usr/share/pixmaps" -name '*.png' | wc -l)"
+          if [ "$pixmaps" -eq 0 ]; then
+            echo "::error::deb installs no pixmaps fallback icon"
+            exit 1
+          fi
+
+          binary="$(find "$stage/opt" -maxdepth 2 -type f -name 'ai.opencode.desktop*' | head -n 1)"
+          if [ -z "$binary" ]; then
+            echo "::error::deb installs no application binary under /opt"
+            exit 1
+          fi
+          required="$(objdump -T "$binary" 2>/dev/null | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -n 1)"
+          required="${required#GLIBC_}"
+          echo "highest glibc symbol needed: ${required:-none}"
+          if [ -n "$required" ] && [ "$(printf '%s\n%s\n' 2.31 "$required" | sort -V | tail -n 1)" != "2.31" ]; then
+            echo "::warning::bundled Electron needs glibc $required but Kylin V10 SP1 ships 2.31"
+          fi
+
+          rm -rf "$stage"
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.name }}-${{ inputs.channel }}

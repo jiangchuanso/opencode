@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process"
+import { chmodSync, mkdirSync, writeFileSync } from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { promisify } from "node:util"
@@ -17,6 +19,96 @@ const legacyDesktopEntryFpm = `${legacyDesktopEntry}=/usr/share/applications/ope
 
 const metainfoFpm = (appId: string) =>
   `${path.join(packageDir, "resources", `${appId}.metainfo.xml`)}=/usr/share/metainfo/${appId}.metainfo.xml`
+
+// Kylin V10 SP1 desktop is an Ubuntu 20.04 base (glibc 2.31, GTK 3), which is the
+// oldest Linux these packages install on, so every dependency is spelled as it
+// exists in focal. libasound2 was renamed to libasound2t64 in Ubuntu 24.04, so it
+// is listed as an alternative to keep one deb installable on both.
+const DEB_DEPENDS = [
+  "libgtk-3-0",
+  "libnss3",
+  "libnotify4",
+  "libsecret-1-0",
+  "libatspi2.0-0",
+  "libxss1",
+  "libxtst6",
+  "libx11-6",
+  "libxcb1",
+  "libxcomposite1",
+  "libxdamage1",
+  "libxext6",
+  "libxfixes3",
+  "libxrandr2",
+  "libxkbcommon0",
+  "libgbm1",
+  "libdrm2",
+  "libuuid1",
+  "libasound2 | libasound2t64",
+  "xdg-utils",
+]
+
+// hicolor is the only icon theme these packages ship, and some shells (including
+// Kylin's UKUI theme stack) do not inherit it, so the same icon also lands in
+// pixmaps where the legacy fallback lookup always finds it.
+const pixmapFpm = (appId: string) =>
+  `${path.join(packageDir, "resources", "icons", "icon.png")}=/usr/share/pixmaps/${appId}.png`
+
+// fpm writes the archive with its own default file modes, so Chromium's SUID
+// sandbox helper can be installed without its setuid bit. Kylin and other hardened
+// kernels sometimes disable unprivileged user namespaces, and then that helper is
+// the only way Chromium can sandbox itself. Refreshing the launcher and icon
+// caches from the same script is what makes the menu entry show its icon without
+// waiting for the next login.
+const maintainerFpm = (appId: string) => {
+  const dir = path.join(os.tmpdir(), "opencode-desktop-fpm")
+  mkdirSync(dir, { recursive: true })
+
+  const afterInstall = path.join(dir, `${appId}.after-install.sh`)
+  const afterRemove = path.join(dir, `${appId}.after-remove.sh`)
+
+  writeFileSync(
+    afterInstall,
+    `#!/bin/sh
+set -e
+
+for sandbox in /opt/*/chrome-sandbox; do
+  [ -f "$sandbox" ] || continue
+  app_dir=\${sandbox%/chrome-sandbox}
+  [ -f "$app_dir/${appId}" ] || continue
+  chown root:root "$sandbox" 2>/dev/null || true
+  chmod 4755 "$sandbox" 2>/dev/null || true
+done
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q /usr/share/applications || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+fi
+
+exit 0
+`,
+  )
+  writeFileSync(
+    afterRemove,
+    `#!/bin/sh
+set -e
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database -q /usr/share/applications || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+  gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+fi
+
+exit 0
+`,
+  )
+  chmodSync(afterInstall, 0o755)
+  chmodSync(afterRemove, 0o755)
+
+  return [`--after-install=${afterInstall}`, `--after-remove=${afterRemove}`]
+}
 
 async function signWindows(configuration: { path: string }) {
   if (process.platform !== "win32") return
@@ -118,6 +210,13 @@ const getBase = (appId: string): Configuration => ({
   },
 })
 
+const linuxFpm = (appId: string, extra: string[] = []) => [
+  metainfoFpm(appId),
+  pixmapFpm(appId),
+  ...maintainerFpm(appId),
+  ...extra,
+]
+
 function getConfig() {
   const appId = APP_IDS[channel]
   const base = getBase(appId)
@@ -128,8 +227,8 @@ function getConfig() {
         ...base,
         appId,
         productName: "OpenCode Dev",
-        deb: { fpm: [metainfoFpm(appId)] },
-        rpm: { packageName: "opencode-dev", fpm: [metainfoFpm(appId)] },
+        deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId) },
+        rpm: { packageName: "opencode-dev", fpm: linuxFpm(appId) },
       }
     }
     case "beta": {
@@ -139,8 +238,8 @@ function getConfig() {
         productName: "OpenCode Beta",
         protocols: { name: "OpenCode Beta", schemes: ["opencode"] },
         publish: { provider: "github", owner: "anomalyco", repo: "opencode-beta", channel: "latest" },
-        deb: { fpm: [metainfoFpm(appId)] },
-        rpm: { packageName: "opencode-beta", fpm: [metainfoFpm(appId)] },
+        deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId) },
+        rpm: { packageName: "opencode-beta", fpm: linuxFpm(appId) },
       }
     }
     case "prod": {
@@ -150,8 +249,8 @@ function getConfig() {
         productName: "OpenCode",
         protocols: { name: "OpenCode", schemes: ["opencode"] },
         publish: { provider: "github", owner: "anomalyco", repo: "opencode", channel: "latest" },
-        deb: { fpm: [metainfoFpm(appId), legacyDesktopEntryFpm] },
-        rpm: { packageName: "opencode", fpm: [metainfoFpm(appId), legacyDesktopEntryFpm] },
+        deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId, [legacyDesktopEntryFpm]) },
+        rpm: { packageName: "opencode", fpm: linuxFpm(appId, [legacyDesktopEntryFpm]) },
       }
     }
   }
