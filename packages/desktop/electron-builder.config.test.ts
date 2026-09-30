@@ -47,9 +47,7 @@ test("installs on Ubuntu 20.04 based systems such as Kylin V10 SP1", async () =>
   expect(depends).not.toContain("libasound2t64")
 
   // Shells that do not inherit hicolor still find the icon through pixmaps.
-  expect(config.deb?.fpm).toContainEqual(
-    expect.stringContaining("/usr/share/pixmaps/ai.opencode.desktop.png"),
-  )
+  expect(config.deb?.fpm).toContainEqual(expect.stringContaining("/usr/share/pixmaps/ai.opencode.desktop.png"))
   expect(config.deb?.fpm?.some((entry) => entry.startsWith("--after-install="))).toBe(true)
   expect(config.deb?.fpm?.some((entry) => entry.startsWith("--after-remove="))).toBe(true)
 })
