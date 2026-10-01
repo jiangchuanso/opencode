@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { expectVisibleSettled } from "../utils/waits"
 import {
   assistantMessage,
   partUpdated,
@@ -22,10 +23,10 @@ test("renders every tool error outcome without leaking hidden tools", async ({ p
   await setupTimeline(page, { messages: [userMessage(), assistantMessage(parts)] })
 
   await expect(page.locator('[data-kind="tool-error-card"]')).toHaveCount(ordinary.length + 1)
-  await expect(page.getByText(/dismissed/i)).toBeVisible()
+  await expectVisibleSettled(page.getByText(/dismissed/i))
   await expect(page.locator('[data-timeline-part-id="prt_todo_error"]')).toHaveCount(0)
   for (let index = 0; index < ordinary.length; index++) {
-    await expect(page.locator(`[data-timeline-part-id="prt_error_${index}"]`)).toBeVisible()
+    await expectVisibleSettled(page.locator(`[data-timeline-part-id="prt_error_${index}"]`))
   }
 })
 
@@ -60,7 +61,7 @@ test("transitions shell and question through running error outcomes", async ({ p
     250,
   )
 
-  await expect(page.locator(`[data-timeline-part-id="${shellID}"] [data-kind="tool-error-card"]`)).toBeVisible()
+  await expectVisibleSettled(page.locator(`[data-timeline-part-id="${shellID}"] [data-kind="tool-error-card"]`))
   await expect(page.locator(`[data-timeline-part-id="${questionID}"]`)).toContainText(/dismissed/i)
 })
 
@@ -78,9 +79,9 @@ test("labels all web search provider variants", async ({ page }) => {
   ]
   await setupTimeline(page, { messages: [userMessage(), assistantMessage(parts)] })
 
-  await expect(page.getByRole("button", { name: /Parallel Web Search/ })).toBeVisible()
-  await expect(page.getByRole("button", { name: /Exa Web Search/ })).toBeVisible()
-  await expect(page.getByRole("button", { name: /^Web Search/ })).toBeVisible()
+  await expectVisibleSettled(page.getByRole("button", { name: /Parallel Web Search/ }))
+  await expectVisibleSettled(page.getByRole("button", { name: /Exa Web Search/ }))
+  await expectVisibleSettled(page.getByRole("button", { name: /^Web Search/ }))
 })
 
 function questionInput() {

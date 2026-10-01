@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test"
+import { expectVisibleSettled } from "../utils/waits"
 import {
   assistantMessage,
   setupTimeline,
@@ -20,7 +21,7 @@ for (const deviceScaleFactor of [1.25, 1.5]) {
     const part = page.locator(`[data-timeline-part-id="${shellID}"]`)
     const output = part.locator('[data-component="bash-output"]')
     const row = page.locator("[data-timeline-key]", { has: part })
-    await expect(output).toBeVisible()
+    await expectVisibleSettled(output)
     await timeline.settle()
 
     const geometry = await row.evaluate((element) => {
@@ -88,7 +89,7 @@ test("keeps the patch card inside a fractionally short virtual row", async ({ pa
   const part = page.locator(`[data-timeline-part-id="${patchID}"]`)
   const card = part.locator('[data-component="accordion"][data-scope="apply-patch"]')
   const row = page.locator("[data-timeline-key]", { has: part })
-  await expect(card).toBeVisible()
+  await expectVisibleSettled(card)
   await timeline.settle()
 
   const geometry = await row.evaluate((element) => {
@@ -145,8 +146,8 @@ test("allows paint rounding for every framed row but not fixed turn gaps", async
       }),
     ],
   })
-  await expect(page.locator('[data-timeline-row="DiffSummary"]')).toBeVisible()
-  await expect(page.locator('[data-timeline-row="TurnGap"]')).toBeVisible()
+  await expectVisibleSettled(page.locator('[data-timeline-row="DiffSummary"]'))
+  await expectVisibleSettled(page.locator('[data-timeline-row="TurnGap"]'))
 
   const rows = await page.locator("[data-timeline-key]").evaluateAll((elements) =>
     elements.map((element) => ({

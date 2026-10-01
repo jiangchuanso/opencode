@@ -1,7 +1,7 @@
 import { base64Encode } from "@opencode-ai/core/util/encode"
 import { expect, test } from "@playwright/test"
 import { mockOpenCodeServer } from "../utils/mock-server"
-import { expectSessionTitle } from "../utils/waits"
+import { expectAttached, expectSessionTitle } from "../utils/waits"
 
 const directory = "C:/OpenCode/OpenFileExpand"
 const projectID = "proj_open_file_expand"
@@ -128,5 +128,5 @@ test("expands a folder whose path has a trailing Windows separator", async ({ pa
   await expect(appRow).toBeVisible()
   await appRow.click()
   await expect(panel.getByRole("tab", { name: "app.ts" })).toHaveAttribute("data-selected", "")
-  await expect(panel.getByText("contents:frontend/app.ts", { exact: true })).toBeVisible()
+  await expectAttached(panel.getByText("contents:frontend/app.ts", { exact: true }))
 })

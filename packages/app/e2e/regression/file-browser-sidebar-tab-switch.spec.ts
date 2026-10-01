@@ -1,7 +1,7 @@
 import { base64Encode } from "@opencode-ai/core/util/encode"
 import { expect, test, type Page } from "@playwright/test"
 import { mockOpenCodeServer } from "../utils/mock-server"
-import { expectSessionTitle } from "../utils/waits"
+import { expectAttached, expectSessionTitle } from "../utils/waits"
 
 const directory = "C:/OpenCode/FileBrowserSidebar"
 const projectID = "proj_file_browser_sidebar"
@@ -32,7 +32,7 @@ test("keeps the file-browser sidebar mounted when switching file tabs", async ({
 
   await panel.getByRole("button", { name: "file-00.ts" }).click()
   await expect(panel.getByRole("tab", { name: "file-00.ts" })).toHaveAttribute("data-selected", "")
-  await expect(panel.getByText("contents:file-00.ts", { exact: true })).toBeVisible()
+  await expectAttached(panel.getByText("contents:file-00.ts", { exact: true }))
 
   const viewport = panel.locator('[data-slot="session-review-v2-sidebar-tree"] .scroll-view__viewport')
   await viewport.hover()
@@ -46,7 +46,7 @@ test("keeps the file-browser sidebar mounted when switching file tabs", async ({
 
   await panel.getByRole("button", { name: "file-79.ts" }).click()
   await expect(panel.getByRole("tab", { name: "file-79.ts" })).toHaveAttribute("data-selected", "")
-  await expect(panel.getByText("contents:file-79.ts", { exact: true })).toBeVisible()
+  await expectAttached(panel.getByText("contents:file-79.ts", { exact: true }))
   expect(await readProbe(page)).toBe(PROBE)
   await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBe(scrolled)
 

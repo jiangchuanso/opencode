@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { expectVisibleSettled } from "../utils/waits"
 import {
   assistantMessage,
   setupTimeline,
@@ -48,9 +49,9 @@ test.describe("session timeline projection", () => {
     ]
     await setupTimeline(page, { messages: [userMessage(), assistantMessage(parts)] })
 
-    await expect(
+    await expectVisibleSettled(
       page.locator('[data-timeline-part-ids="prt_01_read,prt_02_glob,prt_03_grep,prt_04_list"]'),
-    ).toBeVisible()
+    )
     for (const id of [
       "prt_webfetch",
       "prt_websearch",
@@ -63,7 +64,7 @@ test.describe("session timeline projection", () => {
       "prt_skill",
       "prt_custom",
     ]) {
-      await expect(page.locator(`[data-timeline-part-id="${id}"]`).first(), id).toBeVisible()
+      await expectVisibleSettled(page.locator(`[data-timeline-part-id="${id}"]`).first())
     }
     await expect(page.locator('[data-timeline-part-id="prt_todo"]')).toHaveCount(0)
   })
@@ -122,10 +123,10 @@ test.describe("session timeline projection", () => {
     await scroller.evaluate((element) => (element.scrollTop = 0))
 
     await expect(page.locator('[data-timeline-row="TurnDivider"]')).toHaveCount(1)
-    await expect(page.getByText("Session compacted", { exact: true })).toBeVisible()
-    await expect(page.getByText("Visible provider failure")).toBeVisible()
+    await expectVisibleSettled(page.getByText("Session compacted", { exact: true }))
+    await expectVisibleSettled(page.getByText("Visible provider failure"))
     await scroller.evaluate((element) => (element.scrollTop = element.scrollHeight))
-    await expect(page.locator('[data-timeline-row="TurnGap"]')).toBeVisible()
+    await expectVisibleSettled(page.locator('[data-timeline-row="TurnGap"]'))
   })
 
   test("renders inline comments and historical diff summary overflow", async ({ page }) => {
@@ -156,9 +157,9 @@ test.describe("session timeline projection", () => {
     const scroller = page.locator(".scroll-view__viewport", { has: page.locator("[data-timeline-row]") })
     await scroller.evaluate((element) => (element.scrollTop = 0))
 
-    await expect(page.getByText("Keep this stable", { exact: true })).toBeVisible()
-    await expect(page.locator('[data-timeline-row="DiffSummary"]')).toBeVisible()
-    await expect(page.getByText(/show all/i)).toBeVisible()
+    await expectVisibleSettled(page.getByText("Keep this stable", { exact: true }))
+    await expectVisibleSettled(page.locator('[data-timeline-row="DiffSummary"]'))
+    await expectVisibleSettled(page.getByText(/show all/i))
   })
 
   test("renders interruption independently when the turn is not compacted", async ({ page }) => {
@@ -173,7 +174,7 @@ test.describe("session timeline projection", () => {
     })
     await setupTimeline(page, { messages: [user, before, after] })
 
-    await expect(page.getByText("Interrupted", { exact: true })).toBeVisible()
+    await expectVisibleSettled(page.getByText("Interrupted", { exact: true }))
     const rows = await page
       .locator('[data-timeline-row="AssistantPart"], [data-timeline-row="TurnDivider"]')
       .evaluateAll((elements) => elements.map((element) => element.getAttribute("data-timeline-row")))
@@ -215,10 +216,10 @@ test.describe("session timeline projection", () => {
     ]
     await setupTimeline(page, { messages: [userMessage(parts), assistantMessage()] })
 
-    await expect(page.getByAltText("pixel.png")).toBeVisible()
-    await expect(page.getByText("tsconfig.json")).toBeVisible()
-    await expect(page.getByText("@src/a.ts", { exact: true })).toBeVisible()
-    await expect(page.getByText("@explore", { exact: true })).toBeVisible()
+    await expectVisibleSettled(page.getByAltText("pixel.png"))
+    await expectVisibleSettled(page.getByText("tsconfig.json"))
+    await expectVisibleSettled(page.getByText("@src/a.ts", { exact: true }))
+    await expectVisibleSettled(page.getByText("@explore", { exact: true }))
   })
 })
 

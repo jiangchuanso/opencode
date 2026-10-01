@@ -13,7 +13,11 @@ export default defineConfig({
   outputDir: "./e2e/test-results",
   timeout: 60_000,
   expect: {
-    timeout: 10_000,
+    // Review-panel file content and timeline projections mount asynchronously
+    // inside virtualized views; under software rendering (swiftshader) on CI the
+    // layout settles slower than 10s, producing flakes. Give assertions more
+    // time to poll before failing.
+    timeout: 30_000,
   },
   fullyParallel: process.env.PLAYWRIGHT_FULLY_PARALLEL === "1",
   forbidOnly: !!process.env.CI,
