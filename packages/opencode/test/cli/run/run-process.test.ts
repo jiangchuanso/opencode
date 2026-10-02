@@ -68,13 +68,18 @@ describe("opencode run (non-interactive subprocess)", () => {
   // We assert nonzero exit AND wall-clock under the harness timeout — a hang
   // would expire the timeout and produce a different (signal-killed) failure.
   //
+  // `live` rather than `concurrent` because this asserts wall-clock: keeping
+  // the other CLI-spawning tests from competing for the runner is what makes
+  // the budget below mean anything on a busy CI machine.
+  //
   // The budget is generous because spawning the CLI (`bun run src/index.ts`)
   // dominates: on GitHub-hosted runners booting it plus surfacing the model
   // error already runs past the 15s this was tuned for, and 15s made the test
   // fail on the runner rather than catch a regression. A process that really
   // hangs is still caught — the harness kills it, so durationMs lands just
-  // above the budget.
-  cliIt.concurrent(
+  // above the budget. Serial plus a generous budget is the combination that
+  // holds on both upstream and hosted runners.
+  cliIt.live(
     "exits nonzero promptly when the model is unknown (regression for #27371)",
     ({ opencode }) =>
       Effect.gen(function* () {
