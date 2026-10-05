@@ -215,11 +215,7 @@ const getBase = (appId: string): Configuration => ({
   },
 })
 
-const linuxFpm = (appId: string, extra: string[] = []) => [
-  metainfoFpm(appId),
-  pixmapFpm(appId),
-  ...extra,
-]
+const linuxFpm = (appId: string, extra: string[] = []) => [metainfoFpm(appId), pixmapFpm(appId), ...extra]
 
 function getConfig() {
   const appId = APP_IDS[channel]
