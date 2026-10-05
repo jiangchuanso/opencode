@@ -59,7 +59,12 @@ const pixmapFpm = (appId: string) =>
 // the only way Chromium can sandbox itself. Refreshing the launcher and icon
 // caches from the same script is what makes the menu entry show its icon without
 // waiting for the next login.
-const maintainerFpm = (appId: string) => {
+// fpm 2.1.4 (Ruby 3.4.3) rejects the `--after-install=/path` equals form and
+// requires every flag before the first positional argument. electron-builder's
+// native `afterInstall`/`afterRemove` options emit the space form
+// (`--after-install <path>`) in the correct position, so the scripts are passed
+// through those options instead of being appended to the `fpm` array.
+const maintainerFpm = (appId: string): { afterInstall: string; afterRemove: string } => {
   const dir = path.join(os.tmpdir(), "opencode-desktop-fpm")
   mkdirSync(dir, { recursive: true })
 
@@ -107,7 +112,7 @@ exit 0
   chmodSync(afterInstall, 0o755)
   chmodSync(afterRemove, 0o755)
 
-  return [`--after-install=${afterInstall}`, `--after-remove=${afterRemove}`]
+  return { afterInstall, afterRemove }
 }
 
 async function signWindows(configuration: { path: string }) {
@@ -213,13 +218,13 @@ const getBase = (appId: string): Configuration => ({
 const linuxFpm = (appId: string, extra: string[] = []) => [
   metainfoFpm(appId),
   pixmapFpm(appId),
-  ...maintainerFpm(appId),
   ...extra,
 ]
 
 function getConfig() {
   const appId = APP_IDS[channel]
   const base = getBase(appId)
+  const { afterInstall, afterRemove } = maintainerFpm(appId)
 
   switch (channel) {
     case "dev": {
@@ -227,8 +232,8 @@ function getConfig() {
         ...base,
         appId,
         productName: "OpenCode Dev",
-        deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId) },
-        rpm: { packageName: "opencode-dev", fpm: linuxFpm(appId) },
+        deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId), afterInstall, afterRemove },
+        rpm: { packageName: "opencode-dev", fpm: linuxFpm(appId), afterInstall, afterRemove },
       }
     }
     case "beta": {
@@ -238,8 +243,8 @@ function getConfig() {
         productName: "OpenCode Beta",
         protocols: { name: "OpenCode Beta", schemes: ["opencode"] },
         publish: { provider: "github", owner: "anomalyco", repo: "opencode-beta", channel: "latest" },
-        deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId) },
-        rpm: { packageName: "opencode-beta", fpm: linuxFpm(appId) },
+        deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId), afterInstall, afterRemove },
+        rpm: { packageName: "opencode-beta", fpm: linuxFpm(appId), afterInstall, afterRemove },
       }
     }
     case "prod": {
@@ -249,8 +254,8 @@ function getConfig() {
         productName: "OpenCode",
         protocols: { name: "OpenCode", schemes: ["opencode"] },
         publish: { provider: "github", owner: "anomalyco", repo: "opencode", channel: "latest" },
-        deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId, [legacyDesktopEntryFpm]) },
-        rpm: { packageName: "opencode", fpm: linuxFpm(appId, [legacyDesktopEntryFpm]) },
+        deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId, [legacyDesktopEntryFpm]), afterInstall, afterRemove },
+        rpm: { packageName: "opencode", fpm: linuxFpm(appId, [legacyDesktopEntryFpm]), afterInstall, afterRemove },
       }
     }
   }

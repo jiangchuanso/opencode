@@ -48,8 +48,12 @@ test("installs on Ubuntu 20.04 based systems such as Kylin V10 SP1", async () =>
 
   // Shells that do not inherit hicolor still find the icon through pixmaps.
   expect(config.deb?.fpm).toContainEqual(expect.stringContaining("/usr/share/pixmaps/ai.opencode.desktop.png"))
-  expect(config.deb?.fpm?.some((entry) => entry.startsWith("--after-install="))).toBe(true)
-  expect(config.deb?.fpm?.some((entry) => entry.startsWith("--after-remove="))).toBe(true)
+  // Passed through the native option so electron-builder emits the space form
+  // (`--after-install <path>`) in the correct position for fpm 2.1.4+.
+  expect(config.deb?.afterInstall).toMatch(/\.after-install\.sh$/)
+  expect(config.deb?.afterRemove).toMatch(/\.after-remove\.sh$/)
+  expect(config.rpm?.afterInstall).toMatch(/\.after-install\.sh$/)
+  expect(config.rpm?.afterRemove).toMatch(/\.after-remove\.sh$/)
 })
 
 test("ships hicolor icon sizes the Linux shells ask for", async () => {
