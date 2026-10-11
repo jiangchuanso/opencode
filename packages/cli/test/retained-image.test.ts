@@ -2,6 +2,7 @@ import { NodeServices } from "@effect/platform-node"
 import { expect } from "bun:test"
 import { Effect, FileSystem } from "effect"
 import { realpathSync, statSync } from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { RetainedImage } from "../src/services/retained-image"
 import { testEffect } from "../../core/test/lib/effect"
@@ -9,8 +10,15 @@ import { testEffect } from "../../core/test/lib/effect"
 const it = testEffect(NodeServices.layer)
 // Hard links to a running image are a Windows concern, and /tmp is often another filesystem elsewhere.
 const windows = process.platform === "win32" ? it.live : it.live.skip
+// A hard link cannot cross volumes, and CI pins TEMP to the workspace drive while the runtime
+// executing the tests lives on the system drive, so only assert the link when both share one.
+const linking =
+  process.platform === "win32" &&
+  path.parse(process.execPath).root.toLowerCase() === path.parse(os.tmpdir()).root.toLowerCase()
+    ? it.live
+    : it.live.skip
 
-windows("retain hard-links the running image for the scope and sweeps only links of exited processes", () =>
+linking("retain hard-links the running image for the scope and sweeps only links of exited processes", () =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const directory = yield* fs.makeTempDirectoryScoped({ prefix: "opencode-retained-" })
