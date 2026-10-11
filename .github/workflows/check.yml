@@ -14,7 +14,8 @@ concurrency:
 jobs:
   check:
     name: typecheck
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # Fork: no Blacksmith on this repository, use a GitHub-hosted runner.
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1

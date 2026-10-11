@@ -23,7 +23,8 @@ env:
 jobs:
   affected:
     name: affected packages
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    # Fork: no Blacksmith on this repository, use a GitHub-hosted runner.
+    runs-on: ubuntu-latest
     outputs:
       app: ${{ steps.packages.outputs.app }}
     steps:

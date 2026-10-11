@@ -5,7 +5,7 @@
 # Windows and Linux installers and attaches them to that release.
 #
 # The CLI build from the upstream workflow is gone on purpose: the desktop app
-# embeds the server built from packages/opencode, so the CLI archives were dead
+# embeds the server built from packages/cli, so the CLI archives were dead
 # weight. The rest of upstream's workflow is dropped too, because it depends on
 # resources this fork does not own:
 #   - Windows code signing (Azure Trusted Signing)

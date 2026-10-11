@@ -29,7 +29,7 @@
 #
 # Channel notes:
 #   - prod/beta do not bundle an opencode CLI, and do not need one: the desktop
-#     app embeds the server built from packages/opencode (script/build-node.ts).
+#     app embeds the server built from packages/cli (script/build-node.ts).
 #   - dev bundles a CLI downloaded from npm at the version pinned in
 #     packages/desktop/scripts/utils.ts, which is no longer published.
 #
@@ -158,7 +158,7 @@ jobs:
         run: mkdir -p packages/desktop/native
 
       # Copies the channel icons/metainfo into resources/ and builds the embedded
-      # server from packages/opencode.
+      # server from packages/cli.
       - name: Prepare desktop resources
         run: bun run --cwd packages/desktop prebuild
         env:
@@ -303,7 +303,7 @@ jobs:
       # Report.txt records every component that was staged, skipped or is
       # path-only, so it ships next to the archive.
       - name: Build offline bundle
-        working-directory: packages/opencode
+        working-directory: packages/cli
         env:
           # Release lookups go through the GitHub API, which answers anonymously at
           # only 60 requests per hour per IP. Hosted runners share that pool, so
@@ -316,8 +316,8 @@ jobs:
           name: ${{ matrix.name }}-${{ inputs.channel }}
           if-no-files-found: error
           path: |
-            packages/opencode/dist/offline/opencode-offline-*.tar.gz
-            packages/opencode/dist/offline/REPORT.txt
+            packages/cli/dist/offline/opencode-offline-*.tar.gz
+            packages/cli/dist/offline/REPORT.txt
 
       - name: Attach to release
         if: inputs.tag != ''
@@ -327,6 +327,6 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           shopt -s nullglob
-          files=(packages/opencode/dist/offline/opencode-offline-*.tar.gz)
+          files=(packages/cli/dist/offline/opencode-offline-*.tar.gz)
           gh release upload "$TAG" "${files[@]}" --clobber
 
