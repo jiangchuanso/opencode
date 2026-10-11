@@ -28,8 +28,10 @@
 #     installers instead of a CLI build.
 #
 # Channel notes:
-#   - prod/beta do not bundle an opencode CLI, and do not need one: the desktop
-#     app embeds the server built from packages/cli (script/build-node.ts).
+#   - prod and beta bundle the CLI that packages/cli/script/build.ts produces:
+#     prebuild copies it to resources/opencode-cli, and packaging fails without it.
+#     Each package entry builds it for its own architecture, because the runners are
+#     x64 while electron-builder cross-compiles the app.
 #   - dev bundles a CLI downloaded from npm at the version pinned in
 #     packages/desktop/scripts/utils.ts, which is no longer published.
 #
@@ -116,6 +118,10 @@ jobs:
 
   package:
     needs: release
+    # `cli_package` is the distribution packages/cli/script/build.ts writes for this
+    # entry, and `cli_target` is the identity the desktop resolves it by. They differ
+    # for arm64: the runners are x64, so without OPENCODE_CLI_TARGET the app would
+    # bundle an x64 CLI into an arm64 installer.
     strategy:
       fail-fast: false
       matrix:
@@ -124,18 +130,26 @@ jobs:
             platform: win
             arch: x64
             name: opencode-desktop-windows-x64
+            cli_package: opencode-windows-x64-baseline
+            cli_target: x86_64-pc-windows-msvc
           - os: windows-latest
             platform: win
             arch: arm64
             name: opencode-desktop-windows-arm64
+            cli_package: opencode-windows-arm64
+            cli_target: aarch64-pc-windows-msvc
           - os: ubuntu-latest
             platform: linux
             arch: x64
             name: opencode-desktop-linux-x64
+            cli_package: opencode-linux-x64-baseline
+            cli_target: x86_64-unknown-linux-gnu
           - os: ubuntu-latest
             platform: linux
             arch: arm64
             name: opencode-desktop-linux-arm64
+            cli_package: opencode-linux-arm64
+            cli_target: aarch64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -157,12 +171,42 @@ jobs:
         shell: bash
         run: mkdir -p packages/desktop/native
 
-      # Copies the channel icons/metainfo into resources/ and builds the embedded
-      # server from packages/cli.
+      # The desktop ships the CLI binary as resources/opencode-cli and refuses to
+      # package without it, so prod/beta need a built distribution. Building it here
+      # is what lets the four architectures run in parallel; --target selects the
+      # binary that matches the app electron-builder is about to cross-compile.
+      - name: Build CLI distribution
+        if: inputs.channel != 'dev'
+        working-directory: packages/cli
+        shell: bash
+        env:
+          # "latest" is the only channel name service discovery agrees on. Any other
+          # one renames the registration file (service-<channel>.json) and moves the
+          # default port, so the packaged app would never find the service it started.
+          OPENCODE_CHANNEL: latest
+          OPENCODE_TAG: ${{ inputs.tag }}
+          NODE_OPTIONS: ${{ runner.os == 'Windows' && '--max-old-space-size=4096' || '' }}
+        run: |
+          set -euo pipefail
+
+          # A bundled CLI needs a release version rather than a preview one, so prefer
+          # the tag being released and fall back to the version in the source tree.
+          version="${OPENCODE_TAG:-}"
+          version="${version#v}"
+          if [ -z "$version" ]; then
+            version="$(grep -m1 '"version"' package.json | cut -d'"' -f4)"
+          fi
+
+          OPENCODE_VERSION="$version" bun run script/build.ts --target=${{ matrix.cli_package }}
+
+      # Copies the channel icons/metainfo into resources/ and stages the CLI binary
+      # the packager requires.
       - name: Prepare desktop resources
         run: bun run --cwd packages/desktop prebuild
         env:
           OPENCODE_CHANNEL: ${{ inputs.channel }}
+          OPENCODE_CLI_DIST: ${{ github.workspace }}/packages/cli/dist
+          OPENCODE_CLI_TARGET: ${{ matrix.cli_target }}
 
       - name: Build desktop assets
         run: bun run --cwd packages/desktop build
