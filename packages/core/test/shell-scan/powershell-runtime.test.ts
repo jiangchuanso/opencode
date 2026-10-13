@@ -546,7 +546,9 @@ test.skipIf(!pwsh)(
       stdin: new Blob([JSON.stringify(fixtures)]),
       stdout: "pipe",
       stderr: "pipe",
-      timeout: 45_000,
+      // One pwsh process parses and runs every fixture, so the budget has to cover
+      // hundreds of scriptblock compilations. Slower CI runners need well over 45s.
+      timeout: 180_000,
     })
     const [output, error, code] = await Promise.all([
       new Response(process.stdout).text(),
@@ -600,5 +602,5 @@ test.skipIf(!pwsh)(
     expect(executed).toBeGreaterThan(100)
     expect(failures).toEqual([])
   },
-  60_000,
+  240_000,
 )

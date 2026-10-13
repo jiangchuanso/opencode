@@ -287,7 +287,9 @@ const runPermissionCommand = (
     expect(yield* permission.list()).toEqual([])
     expect(yield* Queue.size(queue)).toBe(0)
     return { exit, requests }
-  }).pipe(Effect.scoped, Effect.timeout(Duration.seconds(5)))
+  // Each permission case spawns a real shell, and a cold PowerShell start alone can
+  // exceed a few seconds on slower CI runners, so keep generous headroom here.
+  }).pipe(Effect.scoped, Effect.timeout(Duration.seconds(30)))
 
 // Directory cases still document inherited limitations; fixed scanner cases require matching behavior.
 describe("ShellTool scanner permissions", () => {
