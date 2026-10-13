@@ -9,7 +9,7 @@ import { promisify } from "node:util"
 import type { CustomMacSignOptions } from "app-builder-lib"
 import { Arch, type Configuration } from "electron-builder"
 import { NativeArch } from "../../script/native-arch"
-import { CLI_BINARIES, getCurrentCli, nodePtyPackage } from "./scripts/utils"
+import { CLI_BINARIES, getCurrentCli, nodePtyPackage, resolveChannel } from "./scripts/utils"
 
 const execFileAsync = promisify(execFile)
 
@@ -149,16 +149,6 @@ function macSignOptions(options: CustomMacSignOptions): CustomMacSignOptions {
     },
   }
 }
-
-const channel = (() => {
-  const raw = process.env.OPENCODE_CHANNEL
-
-  if (raw === "dev" || raw === "beta" || raw === "prod") return raw
-
-  if (raw === "latest") return "prod"
-
-  return "dev"
-})()
 
 const APP_IDS = {
   dev: "ai.opencode.desktop.dev",
@@ -310,7 +300,8 @@ const getBase = (appId: string): Configuration => {
 
 const linuxFpm = (appId: string, extra: string[] = []) => [metainfoFpm(appId), pixmapFpm(appId), ...extra]
 
-function getConfig() {
+export function getConfig() {
+  const channel = resolveChannel()
   const appId = APP_IDS[channel]
   const base = getBase(appId)
   const { afterInstall, afterRemove } = maintainerFpm(appId)
