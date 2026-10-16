@@ -132,6 +132,51 @@ describe("Config", () => {
     ),
   )
 
+  it.live("excludes claude directories when claude is disabled", () =>
+    Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(
+      Effect.flatMap((tmp) => {
+        const global = path.join(tmp.path, "global")
+        const home = path.join(global, "home")
+        const project = path.join(tmp.path, "project")
+        return Effect.promise(() =>
+          Promise.all([
+            fs.mkdir(path.join(home, ".claude"), { recursive: true }),
+            fs.mkdir(path.join(home, ".agents"), { recursive: true }),
+            fs.mkdir(path.join(project, ".claude"), { recursive: true }),
+            fs.mkdir(path.join(project, ".agents"), { recursive: true }),
+          ]),
+        ).pipe(
+          Effect.andThen(
+            // Fixture control: both global and project claude dirs are found by default.
+            Effect.gen(function* () {
+              const config = yield* Config.Service
+              const compatibility = yield* config.compatibility!()
+              expect(compatibility.claude.filter((item) => inFixture(tmp.path, item))).toEqual([
+                AbsolutePath.make(path.join(home, ".claude")),
+                AbsolutePath.make(path.join(project, ".claude")),
+              ])
+            }).pipe(Effect.provide(testLayer(project, global))),
+          ),
+          Effect.andThen(
+            Effect.gen(function* () {
+              const config = yield* Config.Service
+              const compatibility = yield* config.compatibility!()
+              expect(compatibility.claude).toEqual([])
+              expect(compatibility.agents.filter((item) => inFixture(tmp.path, item))).toEqual([
+                AbsolutePath.make(path.join(home, ".agents")),
+                AbsolutePath.make(path.join(project, ".agents")),
+              ])
+            }).pipe(
+              Effect.provide(
+                testLayer(project, global, project, undefined, undefined, undefined, undefined, { claude: false }),
+              ),
+            ),
+          ),
+        )
+      }),
+    ),
+  )
+
   it.live("excludes global config reached through the project walk when global is disabled", () =>
     Effect.acquireDisposable(Effect.promise(() => tmpdir())).pipe(
       Effect.flatMap((tmp) => {
@@ -1306,7 +1351,7 @@ describe("Config", () => {
                   fs.writeFile(
                     path.join(tmp.path, "opencode.jsonc"),
                     `{
-                      // Ignored reference: {file:missing.txt}
+                      // Ignored reference: {file:.}
                       "username": "user-{env:OPENCODE_TEST_MISSING}",
                       "mcp": {
                         "servers": {
@@ -1315,7 +1360,8 @@ describe("Config", () => {
                             "url": "https://example.com/mcp",
                             "headers": {
                               "Authorization": "Bearer {env:OPENCODE_TEST_MCP_TOKEN}",
-                              "X-Token": "{file:token.txt}"
+                              "X-Token": "{file:token.txt}",
+                              "X-Missing": "Bearer {file:~/.opencode-test-missing/key}"
                             }
                           }
                         }
@@ -1335,6 +1381,7 @@ describe("Config", () => {
                 expect(remote.headers).toEqual({
                   Authorization: "Bearer secret",
                   "X-Token": 'file\n"token"',
+                  "X-Missing": "Bearer ",
                 })
               }).pipe(Effect.provide(testLayer(tmp.path)))
             }),
@@ -1776,13 +1823,13 @@ describe("Config", () => {
                   type: "local",
                   command: ["node", "server.js"],
                   disabled: true,
-                  timeout: { catalog: 10000, execution: 10000 },
+                  timeout: { startup: 10000, catalog: 10000, execution: 10000 },
                 },
                 remote: {
                   type: "remote",
                   url: "https://mcp.example.com",
                   oauth: { client_id: "client", callback_port: 19876 },
-                  timeout: { catalog: 20000, execution: 20000 },
+                  timeout: { startup: 20000, catalog: 20000, execution: 20000 },
                 },
               },
             })
