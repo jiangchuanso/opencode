@@ -57,22 +57,6 @@ export const dict = {
 
   "home.title": "OpenCode | Відкритий AI-агент для кодування",
 
-  "temp.title": "opencode | AI-агент для кодування, створений для термінала",
-  "temp.hero.title": "AI-агент для кодування, створений для термінала",
-  "temp.zen": "opencode zen",
-  "temp.getStarted": "Почати",
-  "temp.feature.native.title": "Рідний TUI",
-  "temp.feature.native.body": "Чуйний, рідний інтерфейс термінала з темами",
-  "temp.feature.zen.beforeLink": "A",
-  "temp.feature.zen.link": "добірка моделей",
-  "temp.feature.zen.afterLink": "від opencode",
-  "temp.feature.models.beforeLink": "Підтримує 75+ LLM-провайдерів через",
-  "temp.feature.models.afterLink": ", включаючи локальні моделі",
-  "temp.screenshot.caption": "OpenCode TUI з темою tokyonight",
-  "temp.screenshot.alt": "OpenCode TUI з темою tokyonight",
-  "temp.logoLightAlt": "світлий логотип opencode",
-  "temp.logoDarkAlt": "темний логотип opencode",
-
   "home.banner.badge": "Нове",
 
   "home.hero.title": "Відкритий AI-агент для кодування",

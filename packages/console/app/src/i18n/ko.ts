@@ -58,22 +58,6 @@ export const dict = {
 
   "home.title": "OpenCode | 오픈 소스 AI 코딩 에이전트",
 
-  "temp.title": "OpenCode | 터미널을 위해 만들어진 AI 코딩 에이전트",
-  "temp.hero.title": "터미널을 위해 만들어진 AI 코딩 에이전트",
-  "temp.zen": "OpenCode Zen",
-  "temp.getStarted": "시작하기",
-  "temp.feature.native.title": "네이티브 TUI",
-  "temp.feature.native.body": "반응형, 네이티브, 테마 적용 가능한 터미널 UI",
-  "temp.feature.zen.beforeLink": "OpenCode가 제공하는",
-  "temp.feature.zen.link": "엄선된 모델 목록",
-  "temp.feature.zen.afterLink": "",
-  "temp.feature.models.beforeLink": "로컬 모델을 포함하여",
-  "temp.feature.models.afterLink": "를 통해 75개 이상의 LLM 제공자 지원",
-  "temp.screenshot.caption": "tokyonight 테마가 적용된 OpenCode TUI",
-  "temp.screenshot.alt": "tokyonight 테마가 적용된 OpenCode TUI",
-  "temp.logoLightAlt": "opencode 밝은 로고",
-  "temp.logoDarkAlt": "opencode 어두운 로고",
-
   "home.banner.badge": "신규",
 
   "home.hero.title": "오픈 소스 AI 코딩 에이전트",

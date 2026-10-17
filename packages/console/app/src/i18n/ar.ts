@@ -57,22 +57,6 @@ export const dict = {
 
   "home.title": "OpenCode | وكيل برمجة بالذكاء الاصطناعي مفتوح المصدر",
 
-  "temp.title": "opencode | وكيل برمجة بالذكاء الاصطناعي مبني للطرفية",
-  "temp.hero.title": "وكيل البرمجة بالذكاء الاصطناعي المبني للطرفية",
-  "temp.zen": "opencode zen",
-  "temp.getStarted": "ابدأ",
-  "temp.feature.native.title": "واجهة طرفية أصلية",
-  "temp.feature.native.body": "واجهة مستخدم طرفية سريعة الاستجابة، أصلية، وقابلة للتخصيص",
-  "temp.feature.zen.beforeLink": "قائمة",
-  "temp.feature.zen.link": "منسقة من النماذج",
-  "temp.feature.zen.afterLink": "مقدمة من opencode",
-  "temp.feature.models.beforeLink": "يدعم أكثر من 75 مزود LLM من خلال",
-  "temp.feature.models.afterLink": "، بما في ذلك النماذج المحلية",
-  "temp.screenshot.caption": "واجهة OpenCode الطرفية مع سمة tokyonight",
-  "temp.screenshot.alt": "واجهة OpenCode الطرفية بسمة tokyonight",
-  "temp.logoLightAlt": "شعار opencode الفاتح",
-  "temp.logoDarkAlt": "شعار opencode الداكن",
-
   "home.banner.badge": "جديد",
 
   "home.hero.title": "وكيل برمجة بالذكاء الاصطناعي مفتوح المصدر",

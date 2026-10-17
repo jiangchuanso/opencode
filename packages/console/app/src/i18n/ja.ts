@@ -58,22 +58,6 @@ export const dict = {
 
   "home.title": "OpenCode | オープンソースのAIコーディングエージェント",
 
-  "temp.title": "OpenCode | ターミナル向けに構築されたAIコーディングエージェント",
-  "temp.hero.title": "ターミナル向けに構築されたAIコーディングエージェント",
-  "temp.zen": "OpenCode Zen",
-  "temp.getStarted": "はじめる",
-  "temp.feature.native.title": "ネイティブ TUI",
-  "temp.feature.native.body": "レスポンシブでネイティブ、テーマ変更可能なターミナルUI",
-  "temp.feature.zen.beforeLink": "OpenCodeが提供する",
-  "temp.feature.zen.link": "厳選されたモデルリスト",
-  "temp.feature.zen.afterLink": "",
-  "temp.feature.models.beforeLink": "ローカルモデルを含む、",
-  "temp.feature.models.afterLink": "を通じて75以上のLLMプロバイダーをサポート",
-  "temp.screenshot.caption": "tokyonight テーマを使用した OpenCode TUI",
-  "temp.screenshot.alt": "tokyonight テーマの OpenCode TUI",
-  "temp.logoLightAlt": "opencodeのロゴ（ライト）",
-  "temp.logoDarkAlt": "opencodeのロゴ（ダーク）",
-
   "home.banner.badge": "新着",
 
   "home.hero.title": "オープンソースのAIコーディングエージェント",

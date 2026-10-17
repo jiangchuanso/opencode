@@ -16,6 +16,7 @@ import { config } from "~/config"
 import { useI18n } from "~/context/i18n"
 import { useLanguage } from "~/context/language"
 import { LocaleLinks } from "~/component/locale-links"
+import { SocialMeta } from "~/component/social-meta"
 
 function CopyStatus() {
   return (
@@ -46,9 +47,9 @@ export default function Home() {
     <main data-page="opencode">
       {/*<HttpHeader name="Cache-Control" value="public, max-age=1, s-maxage=3600, stale-while-revalidate=86400" />*/}
       <Title>{i18n.t("home.title")}</Title>
+      <Meta name="description" content={i18n.t("app.meta.description")} />
       <LocaleLinks path="/" />
-      <Meta property="og:image" content="/social-share.png" />
-      <Meta name="twitter:image" content="/social-share.png" />
+      <SocialMeta title={i18n.t("home.title")} description={i18n.t("app.meta.description")} path="/" />
       <div data-component="container">
         <Header />
 

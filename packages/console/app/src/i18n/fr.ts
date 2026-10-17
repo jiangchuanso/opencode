@@ -57,22 +57,6 @@ export const dict = {
 
   "home.title": "OpenCode | L'agent de code IA open source",
 
-  "temp.title": "OpenCode | Agent de code IA conçu pour le terminal",
-  "temp.hero.title": "L'agent de code IA conçu pour le terminal",
-  "temp.zen": "OpenCode Zen",
-  "temp.getStarted": "Commencer",
-  "temp.feature.native.title": "TUI Native",
-  "temp.feature.native.body": "Une interface terminal native, réactive et thémable",
-  "temp.feature.zen.beforeLink": "Une",
-  "temp.feature.zen.link": "liste organisée de modèles",
-  "temp.feature.zen.afterLink": "fournie par OpenCode",
-  "temp.feature.models.beforeLink": "Prend en charge plus de 75 fournisseurs LLM via",
-  "temp.feature.models.afterLink": ", y compris les modèles locaux",
-  "temp.screenshot.caption": "OpenCode TUI avec le thème tokyonight",
-  "temp.screenshot.alt": "OpenCode TUI avec le thème tokyonight",
-  "temp.logoLightAlt": "opencode logo light",
-  "temp.logoDarkAlt": "opencode logo dark",
-
   "home.banner.badge": "Nouveau",
 
   "home.hero.title": "L'agent de code IA open source",

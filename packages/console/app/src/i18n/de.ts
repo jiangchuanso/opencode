@@ -58,22 +58,6 @@ export const dict = {
 
   "home.title": "OpenCode | Der Open-Source AI-Coding-Agent",
 
-  "temp.title": "OpenCode | Für das Terminal gebauter AI-Coding-Agent",
-  "temp.hero.title": "Der für das Terminal gebaute AI-Coding-Agent",
-  "temp.zen": "OpenCode Zen",
-  "temp.getStarted": "Loslegen",
-  "temp.feature.native.title": "Native TUI",
-  "temp.feature.native.body": "Eine reaktionsschnelle, native, thematisierbare Terminal-UI",
-  "temp.feature.zen.beforeLink": "Eine",
-  "temp.feature.zen.link": "kuratierte Liste von Modellen",
-  "temp.feature.zen.afterLink": "bereitgestellt von OpenCode",
-  "temp.feature.models.beforeLink": "Unterstützt 75+ LLM-Anbieter durch",
-  "temp.feature.models.afterLink": ", einschließlich lokaler Modelle",
-  "temp.screenshot.caption": "OpenCode TUI mit dem Tokyonight-Theme",
-  "temp.screenshot.alt": "OpenCode TUI mit Tokyonight-Theme",
-  "temp.logoLightAlt": "OpenCode Logo hell",
-  "temp.logoDarkAlt": "OpenCode Logo dunkel",
-
   "home.banner.badge": "Neu",
 
   "home.hero.title": "Der Open-Source AI-Coding-Agent",

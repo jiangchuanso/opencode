@@ -58,22 +58,6 @@ export const dict = {
 
   "home.title": "OpenCode | 開源 AI 編碼代理",
 
-  "temp.title": "OpenCode | 專為終端打造的 AI 編碼代理",
-  "temp.hero.title": "專為終端打造的 AI 編碼代理",
-  "temp.zen": "OpenCode Zen",
-  "temp.getStarted": "開始使用",
-  "temp.feature.native.title": "原生 TUI",
-  "temp.feature.native.body": "響應式、原生、可自訂主題的終端介面",
-  "temp.feature.zen.beforeLink": "",
-  "temp.feature.zen.link": "精選模型列表",
-  "temp.feature.zen.afterLink": "由 OpenCode 提供",
-  "temp.feature.models.beforeLink": "透過",
-  "temp.feature.models.afterLink": "支援 75+ 家 LLM 供應商，包括本地模型",
-  "temp.screenshot.caption": "使用 tokyonight 主題的 OpenCode TUI",
-  "temp.screenshot.alt": "使用 tokyonight 主題的 OpenCode TUI",
-  "temp.logoLightAlt": "opencode 淺色標誌",
-  "temp.logoDarkAlt": "opencode 深色標誌",
-
   "home.banner.badge": "新",
 
   "home.hero.title": "開源 AI 編碼代理",

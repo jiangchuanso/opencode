@@ -58,22 +58,6 @@ export const dict = {
 
   "home.title": "OpenCode | Den open source AI-kodningsagent",
 
-  "temp.title": "opencode | AI-kodningsagent bygget til terminalen",
-  "temp.hero.title": "AI-kodningsagenten bygget til terminalen",
-  "temp.zen": "opencode zen",
-  "temp.getStarted": "Kom i gang",
-  "temp.feature.native.title": "Native TUI",
-  "temp.feature.native.body": "En responsiv, native, tema-bar terminal-UI",
-  "temp.feature.zen.beforeLink": "En",
-  "temp.feature.zen.link": "kurateret liste over modeller",
-  "temp.feature.zen.afterLink": "leveret af opencode",
-  "temp.feature.models.beforeLink": "Understøtter 75+ LLM-udbydere gennem",
-  "temp.feature.models.afterLink": ", inklusive lokale modeller",
-  "temp.screenshot.caption": "opencode TUI med tokyonight-temaet",
-  "temp.screenshot.alt": "opencode TUI med tokyonight-temaet",
-  "temp.logoLightAlt": "opencode logo light",
-  "temp.logoDarkAlt": "opencode logo dark",
-
   "home.banner.badge": "Ny",
 
   "home.hero.title": "Den open source AI-kodningsagent",

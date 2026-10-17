@@ -59,22 +59,6 @@ export const dict = {
 
   "home.title": "OpenCode | The open source AI coding agent",
 
-  "temp.title": "opencode | AI coding agent built for the terminal",
-  "temp.hero.title": "The AI coding agent built for the terminal",
-  "temp.zen": "opencode zen",
-  "temp.getStarted": "Get Started",
-  "temp.feature.native.title": "Native TUI",
-  "temp.feature.native.body": "A responsive, native, themeable terminal UI",
-  "temp.feature.zen.beforeLink": "A",
-  "temp.feature.zen.link": "curated list of models",
-  "temp.feature.zen.afterLink": "provided by opencode",
-  "temp.feature.models.beforeLink": "Supports 75+ LLM providers through",
-  "temp.feature.models.afterLink": ", including local models",
-  "temp.screenshot.caption": "opencode TUI with the tokyonight theme",
-  "temp.screenshot.alt": "opencode TUI with tokyonight theme",
-  "temp.logoLightAlt": "opencode logo light",
-  "temp.logoDarkAlt": "opencode logo dark",
-
   "home.banner.badge": "New",
 
   "home.hero.title": "The open source AI coding agent",

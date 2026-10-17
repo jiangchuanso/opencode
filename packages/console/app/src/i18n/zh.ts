@@ -58,22 +58,6 @@ export const dict = {
 
   "home.title": "OpenCode | 开源 AI 编程代理",
 
-  "temp.title": "OpenCode | 专为终端打造的 AI 编程代理",
-  "temp.hero.title": "专为终端打造的 AI 编程代理",
-  "temp.zen": "OpenCode Zen",
-  "temp.getStarted": "开始使用",
-  "temp.feature.native.title": "原生 TUI",
-  "temp.feature.native.body": "响应迅速、原生的、可定制主题的终端 UI",
-  "temp.feature.zen.beforeLink": "由 OpenCode 提供的",
-  "temp.feature.zen.link": "精选模型列表",
-  "temp.feature.zen.afterLink": "",
-  "temp.feature.models.beforeLink": "通过 Models.dev 支持 75+ LLM 提供商",
-  "temp.feature.models.afterLink": "，包括本地模型",
-  "temp.screenshot.caption": "使用 Tokyonight 主题的 OpenCode TUI",
-  "temp.screenshot.alt": "使用 Tokyonight 主题的 OpenCode TUI",
-  "temp.logoLightAlt": "opencode logo 亮色",
-  "temp.logoDarkAlt": "opencode logo 暗色",
-
   "home.banner.badge": "新",
 
   "home.hero.title": "开源 AI 编程代理",

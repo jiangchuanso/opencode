@@ -58,22 +58,6 @@ export const dict = {
 
   "home.title": "OpenCode | Açık kaynaklı yapay zeka kodlama ajanı",
 
-  "temp.title": "opencode | Terminal için geliştirilmiş yapay zeka kodlama ajanı",
-  "temp.hero.title": "Terminal için geliştirilmiş yapay zeka kodlama ajanı",
-  "temp.zen": "opencode zen",
-  "temp.getStarted": "Başlayın",
-  "temp.feature.native.title": "Yerel (Native) TUI",
-  "temp.feature.native.body": "Duyarlı, yerel, temalandırılabilir bir terminal arayüzü",
-  "temp.feature.zen.beforeLink": "opencode tarafından sağlanan ",
-  "temp.feature.zen.link": "seçkin modeller listesi",
-  "temp.feature.zen.afterLink": "",
-  "temp.feature.models.beforeLink": "Yerel modeller dahil 75+ LLM sağlayıcısını ",
-  "temp.feature.models.afterLink": " üzerinden destekler",
-  "temp.screenshot.caption": "opencode TUI ve tokyonight teması",
-  "temp.screenshot.alt": "tokyonight temalı opencode TUI",
-  "temp.logoLightAlt": "opencode açık logo",
-  "temp.logoDarkAlt": "opencode koyu logo",
-
   "home.banner.badge": "Yeni",
 
   "home.hero.title": "Açık kaynaklı yapay zeka kodlama ajanı",

@@ -57,22 +57,6 @@ export const dict = {
 
   "home.title": "OpenCode | เอเจนต์เขียนโค้ดด้วย AI แบบโอเพนซอร์ส",
 
-  "temp.title": "OpenCode | เอเจนต์เขียนโค้ด AI ที่สร้างมาเพื่อเทอร์มินัล",
-  "temp.hero.title": "เอเจนต์เขียนโค้ด AI ที่สร้างมาเพื่อเทอร์มินัล",
-  "temp.zen": "OpenCode Zen",
-  "temp.getStarted": "เริ่มต้นใช้งาน",
-  "temp.feature.native.title": "Native TUI",
-  "temp.feature.native.body": "UI เทอร์มินัลแบบเนทีฟที่ตอบสนองไวและปรับแต่งธีมได้",
-  "temp.feature.zen.beforeLink": "",
-  "temp.feature.zen.link": "รายการโมเดลที่คัดสรรแล้ว",
-  "temp.feature.zen.afterLink": "โดย OpenCode",
-  "temp.feature.models.beforeLink": "รองรับผู้ให้บริการ LLM กว่า 75 รายผ่าน",
-  "temp.feature.models.afterLink": "รวมถึงโมเดล Local",
-  "temp.screenshot.caption": "OpenCode TUI พร้อมธีม tokyonight",
-  "temp.screenshot.alt": "OpenCode TUI พร้อมธีม tokyonight",
-  "temp.logoLightAlt": "โลโก้ opencode แบบสว่าง",
-  "temp.logoDarkAlt": "โลโก้ opencode แบบมืด",
-
   "home.banner.badge": "ใหม่",
 
   "home.hero.title": "เอเจนต์เขียนโค้ดด้วย AI แบบโอเพนซอร์ส",
