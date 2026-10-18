@@ -177,11 +177,8 @@ export default function Home() {
           <section data-component="problem">
             <div data-slot="section-title">
               <h3>{i18n.t("go.problem.title")}</h3>
-              <p>
-                {i18n.t("go.problem.body")} {i18n.t("go.plans.plus.description")}
-              </p>
+              <p>{i18n.t("go.problem.body")}</p>
             </div>
-            <p>{i18n.t("go.problem.subtitle")}</p>
             <ul>
               <li>
                 <span>[*]</span> {i18n.t("go.problem.item1")}
@@ -201,9 +198,7 @@ export default function Home() {
           <section data-component="how">
             <div data-slot="section-title">
               <h3>{i18n.t("go.how.title")}</h3>
-              <p>
-                {i18n.t("go.how.body")} {i18n.t("go.plans.plus.description")}
-              </p>
+              <p>{i18n.t("go.how.body")}</p>
             </div>
             <ul>
               <li>
@@ -307,7 +302,7 @@ export default function Home() {
                     <p>
                       <strong>Claude Haiku 5.5:</strong> {i18n.t("go.faq.a5.retention")}:{" "}
                       {i18n.t("go.faq.a5.retention30")}.{" "}
-                      <a href="https://docs.anthropic.com/en/docs/claude-code/data-usage">
+                      <a href="https://code.claude.com/docs/en/data-usage">
                         {i18n.t("go.faq.a5.learnMore")}
                       </a>
                       .
