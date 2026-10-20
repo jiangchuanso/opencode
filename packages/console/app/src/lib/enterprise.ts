@@ -6,6 +6,7 @@ import { createLead } from "~/lib/salesforce"
 import { inferenceSpendOptions } from "~/lib/inference-spend"
 import { lookupConsoleAccount, type ConsoleAccount } from "~/lib/console-account"
 import { ENTERPRISE_SPAM_THRESHOLD, enterpriseSpamProbability } from "~/lib/enterprise-spam"
+import { verifyHcaptcha } from "~/lib/hcaptcha"
 
 interface EnterpriseFormData {
   name: string
@@ -16,6 +17,7 @@ interface EnterpriseFormData {
   inferenceSpend?: string
   alias?: string
   message: string
+  captcha?: string
 }
 
 const EMAIL_OCTOPUS_LIST_ID = "1b381e5e-39bd-11f1-ba4a-cdd4791f0c43"
@@ -98,6 +100,7 @@ export async function handleEnterpriseRequest(
     notifications?: boolean
     accountLookup?: (email: string) => Promise<ConsoleAccount | null>
     spam?: Parameters<typeof enterpriseSpamProbability>[1]
+    captcha?: Parameters<typeof verifyHcaptcha>[1]
   } = {},
 ) {
   const dict = i18n(localeFromRequest(request))
@@ -121,6 +124,18 @@ export async function handleEnterpriseRequest(
     const inferenceSpend = inferenceSpendOptions.find((option) => option.value === body.inferenceSpend)
     if (body.inferenceSpend && !inferenceSpend) {
       return Response.json({ error: dict["enterprise.form.error.invalidInferenceSpend"] }, { status: 400 })
+    }
+
+    if (typeof body.captcha !== "string" || !body.captcha) {
+      return Response.json({ error: dict["enterprise.form.error.captcha"] }, { status: 400 })
+    }
+    // Fail open when hCaptcha itself is unavailable; only a rejected token blocks the lead.
+    const human = await verifyHcaptcha(body.captcha, {
+      remoteip: request.headers.get("cf-connecting-ip") ?? undefined,
+      ...options.captcha,
+    })
+    if (human === false) {
+      return Response.json({ error: dict["enterprise.form.error.captcha"] }, { status: 400 })
     }
 
     // Fail open: a missing score never blocks a lead. Confident spam gets the same

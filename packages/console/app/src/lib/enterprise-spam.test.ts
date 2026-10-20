@@ -71,10 +71,11 @@ const submit = async (fetch: (request: Request) => Promise<Response>) => {
     new Request("http://localhost/api/enterprise", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...submission, alias: "" }),
+      body: JSON.stringify({ ...submission, alias: "", captcha: "test-token" }),
     }),
     {
       spam: { inferenceUrl: "https://opencode.test/inference", apiKey: "test-key", fetch },
+      captcha: { secret: "test-secret", fetch: async () => Response.json({ success: true }) },
       salesforceSubmit: async (payload) => {
         leads.push(payload)
         return true
