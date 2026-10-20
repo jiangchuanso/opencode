@@ -30,7 +30,7 @@ import { LocaleLinks } from "~/component/locale-links"
 import { SocialMeta } from "~/component/social-meta"
 
 const models = [
-  { name: "Space Bunny", training: "go.faq.a5.notUsed", retention: "go.faq.a5.retention0" },
+  { name: "MiniMax M3.1 Flash Free", training: "go.faq.a5.notUsed", retention: "go.faq.a5.retention0" },
   { name: "LongCat 2.5 Preview Free", training: "go.faq.a5.notUsed", retention: "go.faq.a5.retention0" },
   { name: "Step 5 Preview", training: "go.faq.a5.notUsed", retention: "go.faq.a5.retention0" },
   { name: "Beam Free", training: "go.faq.a5.notUsed", retention: "go.faq.a5.retention30" },
@@ -86,7 +86,7 @@ export default function Home() {
             <div data-component="desktop-app-banner">
               <span data-slot="badge">{i18n.t("home.banner.badge")}</span>
               <div data-slot="content">
-                <span data-slot="text">{i18n.t("go.promo.step5")}</span>
+                <span data-slot="text">{i18n.t("go.promo.minimaxM31FlashFree")}</span>
               </div>
             </div>
             <Show when={searchParams.ref}>
@@ -177,11 +177,8 @@ export default function Home() {
           <section data-component="problem">
             <div data-slot="section-title">
               <h3>{i18n.t("go.problem.title")}</h3>
-              <p>
-                {i18n.t("go.problem.body")} {i18n.t("go.plans.plus.description")}
-              </p>
+              <p>{i18n.t("go.problem.body")}</p>
             </div>
-            <p>{i18n.t("go.problem.subtitle")}</p>
             <ul>
               <li>
                 <span>[*]</span> {i18n.t("go.problem.item1")}
@@ -201,9 +198,7 @@ export default function Home() {
           <section data-component="how">
             <div data-slot="section-title">
               <h3>{i18n.t("go.how.title")}</h3>
-              <p>
-                {i18n.t("go.how.body")} {i18n.t("go.plans.plus.description")}
-              </p>
+              <p>{i18n.t("go.how.body")}</p>
             </div>
             <ul>
               <li>
@@ -307,7 +302,7 @@ export default function Home() {
                     <p>
                       <strong>Claude Haiku 5.5:</strong> {i18n.t("go.faq.a5.retention")}:{" "}
                       {i18n.t("go.faq.a5.retention30")}.{" "}
-                      <a href="https://docs.anthropic.com/en/docs/claude-code/data-usage">
+                      <a href="https://code.claude.com/docs/en/data-usage">
                         {i18n.t("go.faq.a5.learnMore")}
                       </a>
                       .
