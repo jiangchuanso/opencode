@@ -1,20 +1,6 @@
 import { domain } from "./stage"
 import { EMAILOCTOPUS_API_KEY } from "./app"
 
-// Preview stages have no new Console or inference deployment to forward to.
-const migrationDomain =
-  $app.stage === "production" ? "opencode.ai" : $app.stage === "dev" ? "dev.opencode.ai" : undefined
-const consoleMigration = new sst.Linkable("ConsoleMigration", {
-  properties: {
-    consoleUrl: migrationDomain ? `https://${migrationDomain}/console` : "",
-    inferenceUrl: migrationDomain ? `https://${migrationDomain}/inference` : "",
-  },
-})
-
-////////////////
-// CONSOLE
-////////////////
-
 // Archived Zen request/response dumps (writer removed May 2026). Retained on purpose; nothing reads or writes them.
 new sst.cloudflare.Bucket("ZenData")
 new sst.cloudflare.Bucket("ZenDataNew")
@@ -31,16 +17,11 @@ const HCAPTCHA_SECRET_KEY = new sst.Secret("HCAPTCHA_SECRET_KEY")
 const SALESFORCE_CLIENT_ID = new sst.Secret("SALESFORCE_CLIENT_ID")
 const SALESFORCE_CLIENT_SECRET = new sst.Secret("SALESFORCE_CLIENT_SECRET")
 const SALESFORCE_INSTANCE_URL = new sst.Secret("SALESFORCE_INSTANCE_URL")
-const CONSOLE_CRM_TOKEN = new sst.Secret("CONSOLE_CRM_TOKEN")
-const CONSOLE_CRM_LOOKUP_URL = new sst.Linkable("CONSOLE_CRM_LOOKUP_URL", {
-  properties: { value: `https://${domain}/console/api/internal/console-account` },
-})
 
 new sst.cloudflare.x.SolidStart("Console", {
   domain,
   path: "packages/console/app",
   link: [
-    consoleMigration,
     EMAILOCTOPUS_API_KEY,
     AWS_SES_ACCESS_KEY_ID,
     AWS_SES_SECRET_ACCESS_KEY,
@@ -50,8 +31,6 @@ new sst.cloudflare.x.SolidStart("Console", {
     SALESFORCE_CLIENT_ID,
     SALESFORCE_CLIENT_SECRET,
     SALESFORCE_INSTANCE_URL,
-    CONSOLE_CRM_TOKEN,
-    CONSOLE_CRM_LOOKUP_URL,
   ],
   environment: {
     //VITE_DOCS_URL: web.url.apply((url) => url!),
@@ -68,12 +47,6 @@ new sst.cloudflare.x.SolidStart("Console", {
             ...(flags ?? []),
             "global_fetch_strictly_public",
           ])
-          // Same-zone fetch to inference re-enters as a public request and loses the client IP.
-          if (migrationDomain)
-            args.bindings = $resolve(args.bindings).apply((bindings) => [
-              ...(bindings ?? []),
-              { type: "service", name: "INFERENCE", service: `opencode-inference-${$app.stage}` },
-            ])
         },
       },
     },
