@@ -200,18 +200,19 @@ jobs:
           OPENCODE_VERSION="$version" bun run script/build.ts --target=${{ matrix.cli_package }}
 
       # Copies the channel icons/metainfo into resources/ and stages the CLI binary
-      # the packager requires.
-      - name: Prepare desktop resources
-        run: bun run --cwd packages/desktop prebuild
-        env:
-          OPENCODE_CHANNEL: ${{ inputs.channel }}
-          OPENCODE_CLI_DIST: ${{ github.workspace }}/packages/cli/dist
-          OPENCODE_CLI_TARGET: ${{ matrix.cli_target }}
-
+      # the packager requires. Bun runs the desktop `prebuild` script before
+      # `build`, so this step does both and cannot split into a separate prebuild
+      # step: without OPENCODE_CLI_DIST the lifecycle prebuild aborts with
+      # "OPENCODE_CLI_DIST is required for production desktop builds".
       - name: Build desktop assets
         run: bun run --cwd packages/desktop build
         env:
           OPENCODE_CHANNEL: ${{ inputs.channel }}
+          # The distribution the step above produced, and the identity inside it.
+          # Without the target the desktop resolves the host architecture and ships
+          # an x64 CLI in the arm64 installer.
+          OPENCODE_CLI_DIST: ${{ github.workspace }}/packages/cli/dist
+          OPENCODE_CLI_TARGET: ${{ matrix.cli_target }}
 
       # --publish never keeps electron-builder away from the GitHub release config
       # in electron-builder.config.ts, which points at the upstream repository.
