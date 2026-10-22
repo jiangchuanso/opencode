@@ -26,6 +26,13 @@ const legacyDesktopEntry = path.join(packageDir, "resources", "linux", "opencode
 
 const legacyDesktopEntryFpm = `${legacyDesktopEntry}=/usr/share/applications/opencode-desktop.desktop`
 
+// rpmbuild adds /usr/lib/.build-id links for every ELF file. The bundled Electron
+// binaries are byte-identical across apps on the same Electron version, so those
+// links collide with other Electron RPMs (Slack, Unity Hub, ...) and rpm/zypper
+// refuse to install or update. They only serve debuginfo lookup, so skip them.
+// fpm only accepts flags before the first src=dest mapping, so keep this first.
+const rpmNoBuildIdLinksFpm = "--rpm-rpmbuild-define=_build_id_links none"
+
 const metainfoFpm = (appId: string) =>
   `${path.join(packageDir, "resources", `${appId}.metainfo.xml`)}=/usr/share/metainfo/${appId}.metainfo.xml`
 
@@ -313,7 +320,12 @@ export function getConfig() {
         appId,
         productName: "OpenCode Dev",
         deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId), afterInstall, afterRemove },
-        rpm: { packageName: "opencode-dev", fpm: linuxFpm(appId), afterInstall, afterRemove },
+        rpm: {
+          packageName: "opencode-dev",
+          fpm: [rpmNoBuildIdLinksFpm, ...linuxFpm(appId)],
+          afterInstall,
+          afterRemove,
+        },
       }
     }
 
@@ -329,7 +341,12 @@ export function getConfig() {
           channel: "latest",
         },
         deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId), afterInstall, afterRemove },
-        rpm: { packageName: "opencode-beta", fpm: linuxFpm(appId), afterInstall, afterRemove },
+        rpm: {
+          packageName: "opencode-beta",
+          fpm: [rpmNoBuildIdLinksFpm, ...linuxFpm(appId)],
+          afterInstall,
+          afterRemove,
+        },
       }
     }
 
@@ -345,7 +362,12 @@ export function getConfig() {
           channel: "latest",
         },
         deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId, [legacyDesktopEntryFpm]), afterInstall, afterRemove },
-        rpm: { packageName: "opencode", fpm: linuxFpm(appId, [legacyDesktopEntryFpm]), afterInstall, afterRemove },
+        rpm: {
+          packageName: "opencode",
+          fpm: [rpmNoBuildIdLinksFpm, ...linuxFpm(appId, [legacyDesktopEntryFpm])],
+          afterInstall,
+          afterRemove,
+        },
       }
     }
   }
