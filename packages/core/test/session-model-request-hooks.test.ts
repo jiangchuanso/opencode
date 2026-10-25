@@ -1,5 +1,5 @@
 import { describe, expect } from "bun:test"
-import { ToolDefinition } from "@opencode/ai"
+import { ToolDefinition } from "@opencode/ai/effect"
 import { OpenAIChat } from "@opencode/ai/protocols"
 import { Agent } from "@opencode/schema/agent"
 import { Money } from "@opencode/schema/money"

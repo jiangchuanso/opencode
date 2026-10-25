@@ -243,6 +243,17 @@ describe("Anthropic Messages route", () => {
     }),
   )
 
+  it.effect("sends fast mode speed with its beta header", () =>
+    Effect.gen(function* () {
+      const fast = LLMRequest.update(request, { providerOptions: { speed: "fast" } })
+      const compiled = yield* compileRequest(fast)
+      const prepared = yield* AnthropicMessages.route.prepareTransport(compiled.body, fast)
+
+      expect(compiled.body.speed).toBe("fast")
+      expect(prepared.request.headers["anthropic-beta"]).toBe("interleaved-thinking-2025-05-14,fast-mode-2026-02-01")
+    }),
+  )
+
   it.effect("forwards unknown values for pass-through string enums", () =>
     Effect.gen(function* () {
       const prepared = yield* compileRequest(

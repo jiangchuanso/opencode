@@ -317,6 +317,20 @@ describe("OpenAI Responses route", () => {
     }),
   )
 
+  it.effect("lowers reasoning mode and context into the reasoning object", () =>
+    Effect.gen(function* () {
+      const prepared = yield* compileRequest(
+        LLMRequest.update(request, {
+          providerOptions: { reasoningEffort: "high", reasoningMode: "pro", reasoningContext: "current_turn" },
+        }),
+      )
+
+      expect(prepared.body.reasoning).toEqual({ effort: "high", mode: "pro", context: "current_turn" })
+      expect(prepared.body).not.toHaveProperty("reasoningMode")
+      expect(prepared.body).not.toHaveProperty("reasoningContext")
+    }),
+  )
+
   it.effect("passes through custom OpenAI text verbosity strings", () =>
     Effect.gen(function* () {
       const prepared = yield* compileRequest(

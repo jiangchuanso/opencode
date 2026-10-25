@@ -449,6 +449,21 @@ describe("OpenAI Responses effort updates", () => {
     }),
   )
 
+  it.effect("strips markers when provider options select pro reasoning mode", () =>
+    Effect.gen(function* () {
+      const prepared = yield* compileRequest(
+        LLM.request({
+          model: OpenAI.configure({ apiKey: "fixture" }).responses("gpt-6-sol"),
+          messages: conversation,
+          providerOptions: { reasoningEffort: "low", reasoningMode: "pro" },
+        }),
+      )
+
+      expect(updates(prepared.body)).toEqual([])
+      expect(prepared.body.reasoning).toEqual({ effort: "low", mode: "pro" })
+    }),
+  )
+
   for (const [id, supported] of [
     ["gpt-6-astra", true],
     ["openai/gpt-6-astra", true],
