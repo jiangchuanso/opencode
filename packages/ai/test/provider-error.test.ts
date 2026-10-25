@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { isContextOverflow, isContextOverflowFailure, isRetryable } from "../src/index.js"
+import { isContextOverflow, isContextOverflowFailure, isRetryable } from "../src/effect.js"
 import { AIError } from "../src/schema/index.js"
 import { classifyProviderFailure, providerErrorMessage } from "../src/provider-error.js"
 

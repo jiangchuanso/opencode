@@ -1,6 +1,6 @@
 import { expect } from "bun:test"
 import { Effect } from "effect"
-import { LanguageModel, LLM, Message } from "../../src/index.js"
+import { LanguageModel, LLM, Message } from "../../src/effect.js"
 import { OpenAIChat } from "../../src/protocols/openai-chat.js"
 import { Groq } from "../../src/providers/groq.js"
 import { compileRequest } from "../../src/route/client.js"

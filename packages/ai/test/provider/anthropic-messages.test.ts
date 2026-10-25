@@ -11,7 +11,7 @@ import {
   ToolDefinition,
   Usage,
   Media,
-} from "../../src/index.js"
+} from "../../src/effect.js"
 import { Auth, Endpoint, LLMClient, Route } from "../../src/route.js"
 import { compileRequest } from "../../src/route/client.js"
 import { AnthropicMessages } from "../../src/protocols/anthropic-messages.js"

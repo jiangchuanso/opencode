@@ -14,7 +14,7 @@ import {
   ToolCallPart,
   ToolDefinition,
   Usage,
-} from "../../src/index.js"
+} from "../../src/effect.js"
 import * as Azure from "../../src/providers/azure.js"
 import * as OpenAI from "../../src/providers/openai.js"
 import * as OpenAICompatible from "../../src/providers/openai-compatible.js"

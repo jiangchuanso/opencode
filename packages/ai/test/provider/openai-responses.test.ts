@@ -17,7 +17,7 @@ import {
   ToolResultPart,
   TransportError,
   Usage,
-} from "../../src/index.js"
+} from "../../src/effect.js"
 import {
   Auth,
   LLMClient,
