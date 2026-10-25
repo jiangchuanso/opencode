@@ -5,6 +5,7 @@ on:
     branches:
       - dev
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
 concurrency:
@@ -54,6 +55,7 @@ jobs:
 
   unit:
     name: unit (${{ matrix.settings.name }})
+    if: ${{ !github.event.pull_request.draft }}
     strategy:
       fail-fast: false
       matrix:

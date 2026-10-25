@@ -1,5 +1,6 @@
 import { Effect, Layer, ManagedRuntime, Stream } from "effect"
 import { AIClient } from "./ai-client.js"
+import { Decision, type DecisionModel, type DecisionQuestions, type DecisionRequestInput } from "./decision.js"
 import type { AwaitOptions, Event, Generation, Snapshot } from "./generation.js"
 import { Image, type ImageModel, type ImageRequest, type ImageRequestInput } from "./image.js"
 import { LLM } from "./index.js"
@@ -19,7 +20,7 @@ import { Video, type VideoModel, type VideoRequest, type VideoRequestInput } fro
 
 /**
  * Promise-first entrypoint for scripts and non-Effect callers. One `ManagedRuntime` hosts the LLM, image, video, speech,
- * and transcription clients over a request executor; every method runs the corresponding Effect API and rethrows
+ * transcription and decision clients over a request executor; every method runs the corresponding Effect API and rethrows
  * `AIError` unchanged. `file` and `write` load `node:fs/promises` on first use, so importing this module does not.
  */
 export interface Options {
@@ -194,6 +195,13 @@ export const make = (options: Options = {}) => {
       ) => run(Transcription.start(input), options).then(handle),
       resume: (model: TranscriptionModel, token: unknown, options?: RunOptions) =>
         run(Transcription.resume(model, token), options).then(handle),
+    },
+    decision: {
+      request: Decision.request,
+      generate: <const Model extends DecisionModel, const Questions extends DecisionQuestions>(
+        input: DecisionRequestInput<Model, Questions>,
+        options?: RunOptions,
+      ) => run(Decision.generate(input), options),
     },
     dispose: () => runtime.dispose(),
   }

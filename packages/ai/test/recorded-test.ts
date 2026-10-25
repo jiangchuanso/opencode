@@ -9,8 +9,8 @@ import { ImageClient } from "../src/image-client.js"
 import { VideoClient } from "../src/video-client.js"
 import { SpeechClient } from "../src/speech-client.js"
 import { TranscriptionClient } from "../src/transcription-client.js"
-import { EvaluationClient } from "../src/experimental/evaluation-client.js"
-import type { Service as EvaluationClientService } from "../src/experimental/evaluation-client.js"
+import { DecisionClient } from "../src/decision-client.js"
+import type { Service as DecisionClientService } from "../src/decision-client.js"
 import type { Service as ImageClientService } from "../src/image-client.js"
 import type { Service as VideoClientService } from "../src/video-client.js"
 import type { Service as SpeechClientService } from "../src/speech-client.js"
@@ -33,7 +33,7 @@ type RecordedEnv =
   | VideoClientService
   | SpeechClientService
   | TranscriptionClientService
-  | EvaluationClientService
+  | DecisionClientService
   | Socket.WebSocketConstructor
 
 type RecordedTestsOptions = RecordedGroupOptions & {
@@ -111,7 +111,7 @@ export const recordedTests = (options: RecordedTestsOptions) =>
         VideoClient.layer.pipe(Layer.provide(requestExecutor)),
         SpeechClient.layer.pipe(Layer.provide(requestExecutor)),
         TranscriptionClient.layer.pipe(Layer.provide(requestExecutor)),
-        EvaluationClient.layer.pipe(Layer.provide(requestExecutor)),
+        DecisionClient.layer.pipe(Layer.provide(requestExecutor)),
         webSocket,
       )
     },

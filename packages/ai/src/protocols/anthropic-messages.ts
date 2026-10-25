@@ -117,6 +117,13 @@ const AnthropicImageBlock = Schema.Struct({
 })
 type AnthropicImageBlock = Schema.Schema.Type<typeof AnthropicImageBlock>
 
+const AnthropicVideoBlock = Schema.Struct({
+  type: Schema.tag("video"),
+  source: AnthropicImageSource,
+  cache_control: Schema.optional(AnthropicCacheControl),
+})
+type AnthropicVideoBlock = Schema.Schema.Type<typeof AnthropicVideoBlock>
+
 // SDK: Base64PDFSource:209 {type:"base64", media_type:"application/pdf", data}, PlainTextSource:2716 {type:"text", media_type:"text/plain", data},
 // SDK: URLPDFSource:3823 {type:"url", url}, FileDocumentSource:2344 {type:"file", file_id}, ContentBlockSource:2266 {type:"content", content}
 // SDK: DocumentBlockParam:2297 {source: 5-way union, cache_control, citations, context, title}
@@ -206,7 +213,12 @@ type AnthropicServerToolResultBlock = Schema.Schema.Type<typeof AnthropicServerT
 // Anthropic accepts either a plain string or an ordered array of text, image, and
 // document blocks inside `tool_result.content`. The array form keeps media as native
 // model input instead of JSON-stringifying base64 into prompt text.
-const AnthropicToolResultContent = Schema.Union([AnthropicTextBlock, AnthropicImageBlock, AnthropicDocumentBlock])
+const AnthropicToolResultContent = Schema.Union([
+  AnthropicTextBlock,
+  AnthropicImageBlock,
+  AnthropicDocumentBlock,
+  AnthropicVideoBlock,
+])
 
 const AnthropicToolResultBlock = Schema.Struct({
   type: Schema.tag("tool_result"),
@@ -220,6 +232,7 @@ const AnthropicUserBlock = Schema.Union([
   AnthropicTextBlock,
   AnthropicImageBlock,
   AnthropicDocumentBlock,
+  AnthropicVideoBlock,
   AnthropicToolResultBlock,
 ])
 type AnthropicUserBlock = Schema.Schema.Type<typeof AnthropicUserBlock>
@@ -671,9 +684,26 @@ const citationsFromMetadata = (metadata: MediaPart["metadata"]): AnthropicDocume
 
 const isHttpUrl = (value: string) => /^https?:\/\//i.test(value.trim())
 
-const lowerMedia = Effect.fnUntraced(function* (part: MediaPart, breakpoints?: Cache.Breakpoints) {
+const lowerMedia = Effect.fnUntraced(function* (part: MediaPart, request: LLMRequest, breakpoints?: Cache.Breakpoints) {
   const mime = part.media.mediaType.toLowerCase()
   const cacheControlValue = breakpoints ? cacheControl(breakpoints, part.cache) : undefined
+  if (mime.startsWith("video/")) {
+    const inline = part.media.inline()
+    const source = inline
+      ? { type: "base64" as const, media_type: mime, data: inline.base64 }
+      : yield* ProviderShared.mediaReference(part.media, request.model.provider, "Messages video").pipe(
+          Effect.map((reference) =>
+            reference.type === "ref" && !reference.value.includes("://")
+              ? { type: "file" as const, file_id: reference.value }
+              : { type: "url" as const, url: reference.value },
+          ),
+        )
+    return {
+      type: "video" as const,
+      source,
+      ...(cacheControlValue === undefined ? {} : { cache_control: cacheControlValue }),
+    } satisfies AnthropicVideoBlock
+  }
   const fileId = fileIdFromMetadata(part.metadata)
 
   // SDK file sources: FileImageSource:2350 / FileDocumentSource:2344 {type:"file", file_id}
@@ -782,18 +812,18 @@ const lowerMedia = Effect.fnUntraced(function* (part: MediaPart, breakpoints?: C
 
 // Tool results may carry structured text, images, and documents. Keep media as provider-native
 // content instead of JSON-stringifying base64 into a prompt string.
-const lowerToolResultContentItem = Effect.fnUntraced(function* (item: Tool.Content) {
+const lowerToolResultContentItem = Effect.fnUntraced(function* (item: Tool.Content, request: LLMRequest) {
   if (item.type === "text") return { type: "text" as const, text: item.text } satisfies AnthropicTextBlock
-  return yield* lowerMedia(ProviderShared.toolFileMedia(item))
+  return yield* lowerMedia(ProviderShared.toolFileMedia(item), request)
 })
 
-const lowerToolResultContent = Effect.fnUntraced(function* (part: ToolResultPart) {
+const lowerToolResultContent = Effect.fnUntraced(function* (part: ToolResultPart, request: LLMRequest) {
   // Text / json / error results stay as a string for backward compatibility
   // with existing cassettes and provider expectations.
   if (part.result.type !== "content") return ProviderShared.toolResultText(part)
   // Preserve the narrowed array element type when compiled through a consumer package.
   const content: ReadonlyArray<Tool.Content> = part.result.value
-  return yield* Effect.forEach(content, lowerToolResultContentItem)
+  return yield* Effect.forEach(content, (item) => lowerToolResultContentItem(item, request))
 })
 
 const requireThinkingSignature = (request: LLMRequest) => {
@@ -907,7 +937,7 @@ const lowerMessages = Effect.fnUntraced(function* (request: LLMRequest, breakpoi
           continue
         }
         if (part.type === "media") {
-          content.push(yield* lowerMedia(part, breakpoints))
+          content.push(yield* lowerMedia(part, request, breakpoints))
           continue
         }
         return yield* ProviderShared.unsupportedContent("Anthropic Messages", "user", ["text", "media"])
@@ -983,7 +1013,7 @@ const lowerMessages = Effect.fnUntraced(function* (request: LLMRequest, breakpoi
       content.push({
         type: "tool_result",
         tool_use_id: scrubToolCallID(part.id),
-        content: yield* lowerToolResultContent(part),
+        content: yield* lowerToolResultContent(part, request),
         is_error: part.result.type === "error" ? true : undefined,
         cache_control: cacheControl(breakpoints, part.cache),
       })
@@ -1147,6 +1177,7 @@ const mapUsage = (usage: AnthropicUsage | undefined, providerMetadataKey: string
     cacheWriteInputTokens: cacheWrite,
     reasoningTokens: ProviderShared.sumTokens(...iterations.map((item) => item.output_tokens_details?.thinking_tokens)),
     totalTokens: ProviderShared.totalTokens(inputTokens, outputTokens, undefined),
+    ...ProviderShared.reportedBilling(usage),
     providerMetadata: { [providerMetadataKey]: usage },
   })
 }
@@ -1174,6 +1205,7 @@ const mergeUsage = (left: Usage | undefined, right: Usage | undefined, providerM
     cacheWriteInputTokens,
     reasoningTokens,
     totalTokens: ProviderShared.totalTokens(inputTokens, outputTokens, undefined),
+    cost: right.cost ?? left.cost,
     providerMetadata: {
       [providerMetadataKey]:
         mergeJsonRecords(left.providerMetadata?.[providerMetadataKey], right.providerMetadata?.[providerMetadataKey]) ??

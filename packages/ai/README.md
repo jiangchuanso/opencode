@@ -39,11 +39,13 @@ live under `providerMetadata.vertex`. The default is still full-history replay w
 
 ```ts
 const model = Google.configure({ apiKey }).interactions("gemini-3.8-flash")
-const response = yield* LLM.generate({
-  model,
-  prompt: "Say hello.",
-  providerOptions: { thinkingLevel: "low", thinkingSummaries: "auto", store: true },
-})
+const response =
+  yield *
+  LLM.generate({
+    model,
+    prompt: "Say hello.",
+    providerOptions: { thinkingLevel: "low", thinkingSummaries: "auto", store: true },
+  })
 ```
 
 Interactions supports text output, streamed function calls, native tool results, thought signatures, and multimodal
@@ -146,75 +148,73 @@ usage reads Venice's `cache_creation_input_tokens` field.
 The native package entrypoint is `@opencode/ai/providers/venice`. Image generation, embeddings, Responses, and
 client-side E2EE are not implemented by this provider.
 
-## Experimental evaluation
+## Decisions
 
-Evaluation models compare shared state with typed choice, score, and boolean questions. The API is
-isolated under an experimental entrypoint and provider namespace while the contract evolves:
+Decision models answer typed questions about an input: a yes/no `predicate` (a probability), a `choice` from listed
+values, or a `score` on ordered levels, each with the probability of every option.
 
 ```ts
 import { Effect } from "effect"
-import { Evaluation, EvaluationClient } from "@opencode/ai/experimental"
-import { TypeSafeAI } from "@opencode/ai/providers"
+import { Decision, DecisionClient, Media } from "@opencode/ai"
+import { OpenAI } from "@opencode/ai/providers"
 
-const model = TypeSafeAI.configure().experimental.evaluation("jev-latest")
-
-const program = Evaluation.run({
-  model,
-  state: "I was charged twice. Please refund the duplicate payment.",
-  questions: {
-    department: {
+const program = Decision.generate({
+  model: OpenAI.configure().decision("gpt-6-luna"),
+  input: [
+    { type: "text", text: "I was charged twice. Please refund the duplicate payment." },
+    { type: "media", media: Media.url("https://example.com/receipt.png", { mediaType: "image/png" }) },
+  ],
+  questions: [
+    { name: "refund", type: "predicate", instructions: "Is the customer asking for a refund?" },
+    {
+      name: "department",
       type: "choice",
       instructions: "Which team should handle this?",
-      criteria: { billing: "Payments and refunds", technical: "Bugs and outages" },
+      choices: [{ value: "billing", description: "Payments and refunds" }, { value: "technical" }],
     },
-    urgency: {
+    {
+      name: "urgency",
       type: "score",
       instructions: "How urgent is this?",
-      criteria: ["Can wait", "Needs prompt attention", "Blocking revenue"],
+      levels: [{ label: "Can wait" }, { label: "Needs prompt attention" }, { label: "Blocking revenue" }],
     },
-    refund: { type: "boolean", instructions: "Is the customer asking for a refund?" },
-  },
+  ],
 })
 
-const response = await Effect.runPromise(program.pipe(Effect.provide(EvaluationClient.fetchLayer)))
-
-console.log(response.answers.department.choice)
-console.log(response.answers.refund.probability)
+const response = await Effect.runPromise(program.pipe(Effect.provide(DecisionClient.fetchLayer)))
+const [refund, department] = response.answers
 ```
 
-`TypeSafeAI` reads `TYPESAFE_API_KEY`. `OpenCode` exposes the same selector and reads
-`OPENCODE_API_KEY`. OpenRouter, Vercel AI Gateway, and OpenAI use the same provider shape:
+`input` is a JSON object or an ordered list of `text`, `json` and `media` parts. Answers come back in question order.
+A question the host declines is `{ name, type: "error", reason: "refusal" }`; the other answers still come back.
+Media goes wherever the host reads it, and a kind the host has no place for fails the call. Host-specific fields go in
+`providerOptions`, typed by the selected model (OpenAI `promptCacheKey` and `safetyIdentifier`, OpenRouter
+`provider` routing, Baseten `max_len`).
 
 ```ts
-import { Baseten, DigitalOcean, OpenAI, OpenRouter, VercelAIGateway } from "@opencode/ai/providers"
+import {
+  Baseten,
+  CloudflareAIGateway,
+  CloudflareWorkersAI,
+  DigitalOcean,
+  OpenCode,
+  OpenRouter,
+  TypeSafeAI,
+  VercelAIGateway,
+} from "@opencode/ai/providers"
 
-OpenRouter.configure().experimental.evaluation("typesafe/jev-1.13")
-VercelAIGateway.configure().experimental.evaluation("typesafe-ai/jev")
-Baseten.configure().experimental.evaluation("decision-models/baseten-elephant-9b-latest")
-DigitalOcean.configure().experimental.evaluation("typesafe-jev-1.13.0")
-OpenAI.configure().experimental.evaluation("gpt-6-luna")
+TypeSafeAI.configure().decision("jev-latest")
+OpenCode.configure().decision("jev-1.13")
+OpenRouter.configure().decision("typesafe/jev-1.13")
+VercelAIGateway.configure().decision("typesafe-ai/jev")
+Baseten.configure().decision("decision-models/baseten-elephant-9b-latest")
+DigitalOcean.configure().decision("typesafe-jev-1.13.0")
+CloudflareWorkersAI.configure({ accountId }).decision("@cf/cloudflare/clef")
+CloudflareAIGateway.configure({ accountId }).decision("typesafe/jev")
 ```
 
-OpenRouter reads `OPENROUTER_API_KEY`. Vercel reads `AI_GATEWAY_API_KEY`, then `VERCEL_OIDC_TOKEN`.
-Baseten reads `BASETEN_API_KEY`, accepts `max_len` in `options`, and returns unrounded values, so
-`response.rounding` is unset. DigitalOcean reads
-`DIGITALOCEAN_ACCESS_TOKEN`, `DIGITALOCEAN_API_KEY`, then `DO_INFERENCE_API_KEY`.
-OpenAI reads `OPENAI_API_KEY` and calls `/v1/decisions`.
-The common API uses `boolean`; System One routes lower it to native `noul`, and OpenAI lowers it to
-`predicate`. OpenAI predicates take no criteria, so boolean criteria fail before the request, and a
-refused question fails the call with a `ContentPolicy` error.
-Cloudflare serves its Clef models through Workers AI and TypeSafe Jev through AI Gateway, both on `/ai/run`:
-
-```ts
-import { CloudflareAIGateway, CloudflareWorkersAI } from "@opencode/ai/providers"
-
-CloudflareWorkersAI.configure({ accountId }).experimental.evaluation("@cf/cloudflare/clef")
-CloudflareAIGateway.configure({ accountId }).experimental.evaluation("typesafe/jev")
-```
-
-Choice and score answers include `confidence` when the provider returns it, such as
-`response.answers.department.confidence`. Score legends remain available in provider metadata, and
-the provider's rounded probabilities are returned unchanged.
+OpenAI and Vercel AI Gateway use OpenAI's `/v1/decisions` API. TypeSafe, OpenCode, OpenRouter, Baseten and
+DigitalOcean use System One (`/systemone`), and Cloudflare sends the System One body through `/ai/run`.
 
 ## Alibaba Cloud Model Studio
 

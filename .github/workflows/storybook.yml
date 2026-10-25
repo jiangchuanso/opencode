@@ -12,6 +12,7 @@ on:
       - "packages/session-ui/**"
   pull_request:
     branches: [dev]
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - ".github/workflows/storybook.yml"
       - "package.json"
@@ -28,6 +29,7 @@ concurrency:
 jobs:
   build:
     name: storybook build
+    # Fork: no Blacksmith on this repository, use a GitHub-hosted runner.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

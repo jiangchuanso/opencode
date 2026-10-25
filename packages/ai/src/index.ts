@@ -79,6 +79,42 @@ export type {
   TranscriptionRoute,
 } from "./transcription.js"
 export { Transcription } from "./transcription.js"
+export { DecisionClient } from "./decision-client.js"
+export {
+  ChoiceAnswer,
+  ChoiceQuestion,
+  ChoiceValue,
+  DecisionAnswer,
+  DecisionJsonPart,
+  DecisionMediaPart,
+  DecisionModel,
+  DecisionModelCompatibility,
+  DecisionModelSchema,
+  DecisionPart,
+  DecisionQuestion,
+  DecisionRequest,
+  DecisionResponse,
+  DecisionTextPart,
+  ErrorAnswer,
+  PredicateAnswer,
+  PredicateQuestion,
+  ScoreAnswer,
+  ScoreQuestion,
+} from "./decision.js"
+export type {
+  AnswerFor,
+  AnswersFor,
+  DecisionInput,
+  DecisionModelOptions,
+  DecisionOptions,
+  DecisionQuestions,
+  DecisionRequestFor,
+  DecisionRequestInput,
+  DecisionResponseFor,
+  DecisionModelRoute,
+} from "./decision.js"
+export { Decision } from "./decision.js"
+export { DecisionRoute } from "./route/decision.js"
 export { Media } from "./media.js"
 export { Generation } from "./generation.js"
 export type {
