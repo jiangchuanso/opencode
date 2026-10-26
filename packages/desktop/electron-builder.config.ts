@@ -1,24 +1,15 @@
-import { execFile } from "node:child_process"
 import { chmodSync, mkdirSync, writeFileSync } from "node:fs"
 import { readdir, stat } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { promisify } from "node:util"
 
-import type { CustomMacSignOptions } from "app-builder-lib"
 import { Arch, type Configuration } from "electron-builder"
 import { NativeArch } from "../../script/native-arch"
 import { DESKTOP_NATIVE_ENGLISH } from "@opencode/app/i18n/desktop-native"
-import { CLI_BINARIES, getCurrentCli, nodePtyPackage, resolveChannel } from "./scripts/utils"
-
-const execFileAsync = promisify(execFile)
+import { CLI_BINARIES, getCurrentCli, nodePtyPackage } from "./script/utils"
 
 const packageDir = path.dirname(fileURLToPath(import.meta.url))
-
-const rootDir = path.resolve(packageDir, "../..")
-
-const signScript = path.join(rootDir, "script", "sign-windows.ps1")
 
 // The Electron 42 packaging update briefly installed Linux launchers/icons under
 // "opencode-desktop". Keep that hidden desktop entry around so existing GNOME/KDE
@@ -36,6 +27,10 @@ const rpmNoBuildIdLinksFpm = "--rpm-rpmbuild-define=_build_id_links none"
 
 const metainfoFpm = (appId: string) =>
   `${path.join(packageDir, "resources", `${appId}.metainfo.xml`)}=/usr/share/metainfo/${appId}.metainfo.xml`
+
+// Beta packages every commit for the team, so it trades about 5% (deb) and 17% (rpm) larger files for xz -1, which
+// compresses the payload about 3x faster than the deb default (-3) and 5x faster than the rpm default (-9).
+const betaCompressionFpm = (target: "deb" | "rpm") => [`--${target}-compression-level`, "1"]
 
 // Kylin V10 SP1 desktop is an Ubuntu 20.04 base (glibc 2.31, GTK 3), which is the
 // oldest Linux these packages install on, so every dependency is spelled as it
@@ -132,30 +127,14 @@ exit 0
   return { afterInstall, afterRemove }
 }
 
-async function signWindows(configuration: { path: string }) {
-  if (process.platform !== "win32") return
+function resolveChannel() {
+  const raw = process.env.OPENCODE_CHANNEL
 
-  if (process.env.GITHUB_ACTIONS !== "true") return
+  if (raw === "dev" || raw === "beta" || raw === "prod") return raw
 
-  await execFileAsync(
-    "pwsh",
-    ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", signScript, configuration.path],
-    { cwd: rootDir, windowsHide: true },
-  )
-}
+  if (raw === "latest") return "prod"
 
-function macSignOptions(options: CustomMacSignOptions): CustomMacSignOptions {
-  return {
-    ...options,
-    optionsForFile: (file) => {
-      const defaults = options.optionsForFile?.(file)
-
-      if (file !== path.join(options.app, "Contents/Resources/opencode-cli")) return defaults ?? {}
-
-      // The Bun CLI loads bun-pty's native library; Electron and its helpers do not need this exception.
-      return { ...defaults, entitlements: path.join(packageDir, "resources/entitlements.cli.plist") }
-    },
-  }
+  return "dev"
 }
 
 const APP_IDS = {
@@ -179,6 +158,7 @@ function linuxExecutableName(appId: string): string {
 
 const getBase = (appId: string): Configuration => {
   const target = getCurrentCli()
+  const desktopName = `${appId}.desktop`
 
   return {
     artifactName: "opencode-desktop-${os}-${arch}.${ext}",
@@ -191,9 +171,10 @@ const getBase = (appId: string): Configuration => {
     // "ai.opencode.desktop.desktop".
     // https://developer.gnome.org/documentation/guidelines/maintainer/integrating.html
     // https://www.electron.build/docs/linux/
-    extraMetadata: {
-      desktopName: `${appId}.desktop`,
-    },
+    // Release builds take their version from OPENCODE_VERSION instead of rewriting package.json.
+    extraMetadata: process.env.OPENCODE_VERSION
+      ? { desktopName, version: process.env.OPENCODE_VERSION }
+      : { desktopName },
     files: [
       "out/**/*",
       "resources/**/*",
@@ -227,7 +208,7 @@ const getBase = (appId: string): Configuration => {
     afterPack: async (context) => {
       const arch = Arch[context.arch]
 
-      // The --arm64 flag picks Electron while OPENCODE_CLI_TARGET picks the CLI and node-pty, so they can disagree.
+      // The --arm64 flag picks Electron while OPENCODE_TARGET picks the CLI and node-pty, so they can disagree.
       if (arch !== "x64" && arch !== "arm64") throw new Error(`Unsupported desktop architecture: ${arch}`)
 
       if (arch !== target.cpu) throw new Error(`Packaging ${arch} Electron with the ${target.target} CLI`)
@@ -274,15 +255,6 @@ const getBase = (appId: string): Configuration => {
         NSMicrophoneUsageDescription: DESKTOP_NATIVE_ENGLISH["desktop.microphoneUsage"],
         NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac: true,
       },
-      hardenedRuntime: true,
-      gatekeeperAssess: false,
-      entitlements: "resources/entitlements.plist",
-      entitlementsInherit: "resources/entitlements.plist",
-      sign: async (options) => {
-        const { sign } = await import("app-builder-lib/out/codeSign/macCodeSign")
-        await sign(macSignOptions(options))
-      },
-      notarize: true,
       target: ["dmg", "zip"],
     },
     protocols: {
@@ -291,9 +263,6 @@ const getBase = (appId: string): Configuration => {
     },
     win: {
       icon: `resources/icons/icon.ico`,
-      signtoolOptions: {
-        sign: signWindows,
-      },
       target: ["nsis"],
       verifyUpdateCodeSignature: false,
     },
@@ -359,10 +328,10 @@ export function getConfig() {
           url: "https://opencode.ai/update/api/beta/desktop/opencode/",
           channel: "latest",
         },
-        deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId), afterInstall, afterRemove },
+        deb: { depends: DEB_DEPENDS, fpm: [...betaCompressionFpm("deb"), ...linuxFpm(appId)], afterInstall, afterRemove },
         rpm: {
           packageName: "opencode-beta",
-          fpm: [rpmNoBuildIdLinksFpm, ...linuxFpm(appId)],
+          fpm: [rpmNoBuildIdLinksFpm, ...betaCompressionFpm("rpm"), ...linuxFpm(appId)],
           afterInstall,
           afterRemove,
         },

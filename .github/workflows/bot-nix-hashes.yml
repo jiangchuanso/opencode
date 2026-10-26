@@ -1,7 +1,7 @@
 name: bot-nix-hashes
 
 permissions:
-  contents: write
+  contents: read
 
 on:
   workflow_dispatch:
@@ -92,6 +92,7 @@ jobs:
     needs: compute-hash
     if: github.event_name != 'pull_request' && github.repository == 'anomalyco/opencode'
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    environment: release
 
     steps:
       - name: Checkout repository
