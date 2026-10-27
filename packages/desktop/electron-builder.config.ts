@@ -28,9 +28,9 @@ const rpmNoBuildIdLinksFpm = "--rpm-rpmbuild-define=_build_id_links none"
 const metainfoFpm = (appId: string) =>
   `${path.join(packageDir, "resources", `${appId}.metainfo.xml`)}=/usr/share/metainfo/${appId}.metainfo.xml`
 
-// Beta packages every commit for the team, so it trades about 5% (deb) and 17% (rpm) larger files for xz -1, which
+// Dev and beta package every commit, so they trade about 5% (deb) and 17% (rpm) larger files for xz -1, which
 // compresses the payload about 3x faster than the deb default (-3) and 5x faster than the rpm default (-9).
-const betaCompressionFpm = (target: "deb" | "rpm") => [`--${target}-compression-level`, "1"]
+const previewCompressionFpm = (target: "deb" | "rpm") => [`--${target}-compression-level`, "1"]
 
 // Kylin V10 SP1 desktop is an Ubuntu 20.04 base (glibc 2.31, GTK 3), which is the
 // oldest Linux these packages install on, so every dependency is spelled as it
@@ -307,10 +307,20 @@ export function getConfig() {
         ...base,
         appId,
         productName: "OpenCode Dev",
-        deb: { depends: DEB_DEPENDS, fpm: linuxFpm(appId), afterInstall, afterRemove },
+        publish: {
+          provider: "generic",
+          url: "https://opencode.ai/update/api/dev/desktop/opencode/",
+          channel: "latest",
+        },
+        deb: {
+          depends: DEB_DEPENDS,
+          fpm: [...previewCompressionFpm("deb"), ...linuxFpm(appId)],
+          afterInstall,
+          afterRemove,
+        },
         rpm: {
           packageName: "opencode-dev",
-          fpm: [rpmNoBuildIdLinksFpm, ...linuxFpm(appId)],
+          fpm: [rpmNoBuildIdLinksFpm, ...previewCompressionFpm("rpm"), ...linuxFpm(appId)],
           afterInstall,
           afterRemove,
         },
@@ -328,10 +338,15 @@ export function getConfig() {
           url: "https://opencode.ai/update/api/beta/desktop/opencode/",
           channel: "latest",
         },
-        deb: { depends: DEB_DEPENDS, fpm: [...betaCompressionFpm("deb"), ...linuxFpm(appId)], afterInstall, afterRemove },
+        deb: {
+          depends: DEB_DEPENDS,
+          fpm: [...previewCompressionFpm("deb"), ...linuxFpm(appId)],
+          afterInstall,
+          afterRemove,
+        },
         rpm: {
           packageName: "opencode-beta",
-          fpm: [rpmNoBuildIdLinksFpm, ...betaCompressionFpm("rpm"), ...linuxFpm(appId)],
+          fpm: [rpmNoBuildIdLinksFpm, ...previewCompressionFpm("rpm"), ...linuxFpm(appId)],
           afterInstall,
           afterRemove,
         },
