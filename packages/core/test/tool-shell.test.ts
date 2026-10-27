@@ -257,6 +257,7 @@ const withScanner = <A, E, R>(
     (tmp) => Effect.promise(() => tmp[Symbol.asyncDispose]().then(() => undefined)),
   )
 
+// The timeout catches a hung permission flow, not slowness: PowerShell commands on loaded Windows runners have exceeded 5s.
 const runPermissionCommand = (
   registry: Tool.Interface,
   command: string,
