@@ -26,6 +26,7 @@ defaults:
 jobs:
   miri:
     name: Miri (callback ownership)
+    if: github.repository == 'anomalyco/opencode'
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     env:
@@ -48,6 +49,7 @@ jobs:
 
   test:
     name: Core (${{ matrix.os }})
+    if: github.repository == 'anomalyco/opencode'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -78,6 +80,7 @@ jobs:
 
   windows:
     name: Windows (${{ matrix.arch }})
+    if: github.repository == 'anomalyco/opencode'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
