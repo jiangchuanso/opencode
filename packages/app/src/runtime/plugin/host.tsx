@@ -16,6 +16,7 @@ import {
   untrack,
   useContext,
   type Accessor,
+  type JSX,
   type Owner,
   type ParentProps,
 } from "solid-js"
@@ -31,6 +32,7 @@ import {
   type Cleanup,
   type Context,
   type Contract,
+  type DialogHandle,
   type Dialogs,
   type Link,
   type Links,
@@ -39,6 +41,7 @@ import {
   type Persisted,
   type PluginOptions,
   type Registry,
+  type SelectOptions,
   type Ipc,
   type IpcClient,
   type IpcSpec,
@@ -48,6 +51,7 @@ import {
 } from "@opencode/plugin/gui"
 import { OpenCode, type OpenCodeClient } from "@opencode/client/promise"
 import { useLanguage } from "@/runtime/i18n/language"
+import { PluginAlertDialog, PluginConfirmDialog, PluginPromptDialog, PluginSelectDialog } from "./dialogs"
 import { createSessionStore, whenLoaded } from "./stores"
 
 type Contribution = { key: string; registry: string; plugin: string; value: Accessor<unknown> }
@@ -292,8 +296,13 @@ function createHost(input: HostInput) {
     ...input.apis,
     links: () => links,
     // Bound to the instance that asked, so an older async call after a disable or reload opens and closes nothing.
-    dialogs: (plugin, _, context, register): Dialogs => ({
-      open(render, options) {
+    dialogs: (plugin, _, context, register): Dialogs => {
+      // `ended` runs when the dialog closes, however it closes, and when it can no longer open.
+      const open = (
+        render: (dialog: DialogHandle) => JSX.Element,
+        options?: { readonly replace?: boolean },
+        ended?: () => void,
+      ): DialogHandle => {
         const id = `plugin:${plugin}:${sequence.value++}`
         const waiting = { cancel: () => {} }
         // This open alone: once it aborts, a deferred open neither mounts nor replaces another dialog.
@@ -305,11 +314,16 @@ function createHost(input: HostInput) {
           abort(opening)
           waiting.cancel()
           dialog.close(id)
+          ended?.()
         }
 
         const handle = { close }
 
-        if (context.signal.aborted) return handle
+        if (context.signal.aborted) {
+          ended?.()
+
+          return handle
+        }
 
         // Closes this dialog, not whichever is on top, when the plugin or the scope that opened it goes away.
         const release = register(close)
@@ -338,7 +352,8 @@ function createHost(input: HostInput) {
                   </ErrorBoundary>
                 )
               },
-              undefined,
+              // Escape, a click outside, a replacing dialog, or an open the stack dropped.
+              ended,
               id,
               // The stack mounts in a later transition. Its handle, its owner or the plugin ending before then keeps
               // it closed.
@@ -347,9 +362,34 @@ function createHost(input: HostInput) {
         )
 
         return handle
-      },
-      active: () => !!dialog.active,
-    }),
+      }
+
+      // Settles with the content's answer, or with `fallback` once the dialog ends without one; the first wins.
+      const ask = <T,>(fallback: T, content: (answer: (value: T) => void) => JSX.Element) =>
+        new Promise<T>((resolve) => {
+          open(
+            (handle) =>
+              content((value) => {
+                resolve(value)
+                handle.close()
+              }),
+            undefined,
+            () => resolve(fallback),
+          )
+        })
+
+      return {
+        open: (render, options) => open(render, options),
+        active: () => !!dialog.active,
+        confirm: (options) => ask(false, (answer) => <PluginConfirmDialog options={options} done={answer} />),
+        alert: (options) =>
+          ask(undefined, (answer) => <PluginAlertDialog options={options} done={() => answer(undefined)} />),
+        prompt: (options) =>
+          ask<string | undefined>(undefined, (answer) => <PluginPromptDialog options={options} done={answer} />),
+        select: <T,>(options: SelectOptions<T>) =>
+          ask<T | undefined>(undefined, (answer) => <PluginSelectDialog options={options} done={answer} />),
+      }
+    },
   } satisfies { readonly [K in keyof HostApis]: HostApiFactory<HostApis[K]> }
 
   const activate = async (definition: Entry) => {

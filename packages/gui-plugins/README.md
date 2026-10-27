@@ -210,7 +210,7 @@ const screenActive = useQuery(() => ({
 
 Each line links to the file whose TSDoc covers every field.
 
-SDK icon fields take an `IconName` from `@opencode/plugin/gui`: the names of the app's icon catalog (`@opencode/ui/icons/catalog`), which `bun run generate` in `packages/plugin` copies into `packages/plugin/src/gui/icon-name.ts`. `src/icon-name.typecheck.ts` fails the typecheck when the two drift.
+SDK icon fields take an `IconName` from `@opencode/plugin/gui`: the names of the app's icon catalog (`@opencode/ui/icons/catalog`), which `bun run generate` in `packages/plugin` copies into `packages/plugin/src/gui/icon-name.ts`. `src/icon-name.typecheck.ts` fails the typecheck when the two drift. A plugin bundle cannot require `@opencode/ui`, so it renders an icon with `ctx.ui.Icon`, and the app's buttons, menus, dialog frame, fields, Markdown and code with the other `ctx.ui` components.
 
 ### Registries
 
@@ -243,16 +243,21 @@ to the displayed repository or worktree instead of adding a second menu item.
 | ---------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | `ctx.layout`                 | `Layout`                                                                           | Side panel tabs, scroll offsets, settings, open project          |
 | `ctx.sessions`               | `Sessions`                                                                         | Sessions of open tabs, and the mounted `MountedSession`          |
-| `ctx.screen`                 | `Screen`                                                                           | The session screen's files, comments and composer                |
+| `ctx.screen`                 | `Screen`                                                                           | Session screen files, comments, composer text, parts and model   |
 | `ctx.storage`                | `Storage`                                                                          | Stores for keys known only at runtime, and window memory         |
 | `ctx.system`                 | `System`                                                                           | Clipboard, saving files, `openExternal`                          |
-| `ctx.desktop`                | `Desktop \| undefined`                                                             | Desktop-only: reveal, launch, installed, zoom                    |
-| `ctx.dialogs`                | `Dialogs`                                                                          | `open` returns a handle to close; a dialog closes with its owner |
+| `ctx.desktop`                | `Desktop \| undefined`                                                             | Desktop-only: reveal, launch, installed, zoom, pick files        |
+| `ctx.dialogs`                | `Dialogs`                                                                          | `open`, `confirm`, `alert`, `prompt`, `select`; close with owner |
+| `ctx.toast`                  | `Toasts`                                                                           | Toasts that close when the plugin goes away                      |
+| `ctx.tabs`                   | `Tabs`                                                                             | The shell's tab strip: list, open, show, move and close tabs     |
+| `ctx.attention`              | `Attention`                                                                        | System notifications and sounds, per the user's settings         |
+| `ctx.commands`               | `Commands`                                                                         | Runs a published or app command, as the palette does             |
 | `ctx.links`                  | `Links`                                                                            | Opens a local link, or checks it exists, with the best handler   |
 | `ctx.embeds`                 | `Embeds`                                                                           | Shows a web page the main entry created                          |
+| `ctx.ui`                     | `Ui`                                                                               | The app's icons, buttons, menus, dialog frame, Markdown and code |
 | `ctx.app`                    | `App`                                                                              | Version, channel, platform, packaged                             |
 | `ctx.locale`                 | `Locale`                                                                           | Locale and writing direction                                     |
-| `ctx.appearance`             | `Appearance`                                                                       | The user's mono font                                             |
+| `ctx.appearance`             | `Appearance`                                                                       | The user's mono font, and the light or dark scheme               |
 | `ctx.router`                 | `Router`                                                                           | The route path, and whether it is changing                       |
 | `ctx.keybinds`               | `Keybinds`                                                                         | Display and matching of command keybinds                         |
 | `ctx.servers`                | `Servers`                                                                          | The servers the app lists, and each one's live `ServerRef`       |
@@ -408,7 +413,7 @@ const saved = builtinMainContext(ctx).storage.store("servers", {
 - `Storage.remove(key, { from })` reads as `initial` again and never imports `from` again.
 - Renaming a built-in that has shipped moves three things: stored keys (`from`), command ids (the keybind rename map in `packages/app/src/settings/keybinds/migration.ts`), and panel keys (`BuiltinPanel.legacy`). Never drop user data. The enable setting starts again under the new id.
 
-A built-in always runs, whatever setting is saved under its id, and Settings › Plugins has no switch for it. For any other plugin, the setting saved under its id wins; with none, the plugin is enabled. A plugin from the config whose `os` leaves out this system never runs; Settings › Plugins keeps its row, without a switch, with "Not available on this system." Both desktop hosts use this rule (`pluginEnabled`). A failed startup snapshot is unknown, so the window waits for the manager list rather than running disabled plugins.
+A built-in always runs, whatever setting is saved under its id, so Extensions › Plugins does not list it, unless it failed: then its row shows the error and Reload, without a switch. For any other plugin, the setting saved under its id wins; with none, the plugin is enabled. A plugin from the config whose `os` leaves out this system never runs; Extensions › Plugins keeps its row, without a switch, with "Not available on this system." Both desktop hosts use this rule (`pluginEnabled`). A failed startup snapshot is unknown, so the window waits for the manager list rather than running disabled plugins.
 
 ## Runtime rules
 

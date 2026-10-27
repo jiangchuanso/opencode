@@ -1,5 +1,6 @@
-import type { SessionMessageInfo } from "@opencode/client/promise"
+import type { PluginInfo, SessionMessageInfo } from "@opencode/client/promise"
 import { DialogProvider } from "@opencode/ui/context/dialog"
+import { Toast } from "@opencode/ui/toast"
 import {
   Panel,
   type Appearance,
@@ -43,8 +44,9 @@ import { createClosedTabs } from "../src/runtime/plugin/closed-tabs"
 import { PluginSlot } from "../src/runtime/plugin/render"
 import { persistedHandle } from "../src/runtime/plugin/stores"
 import { LanguageProvider } from "../src/runtime/i18n/language"
-import { PluginsSettings } from "../src/runtime/plugin/settings-plugins"
+import { ExtensionPlugins } from "../src/runtime/plugin/extension-plugins"
 import { SessionPluginPills } from "../src/session/composer/plugin-pills"
+import { ui } from "../src/runtime/plugin/ui"
 
 export {
   bindPlugin,
@@ -95,7 +97,7 @@ const about: App = { name: "opencode", version: "", channel: "dev", platform: "d
 
 const locale: BuiltinLocale = { locale: () => "en", direction: () => "ltr", setDirection() {} }
 
-const appearance: Appearance = { font: () => "monospace" }
+const appearance: Appearance = { font: () => "monospace", mode: () => "light" }
 
 const router: Router = { routing: () => false, path: () => "/" }
 
@@ -105,7 +107,7 @@ const servers: Servers = { list: () => [], get: () => undefined }
 
 const workspaces: Workspaces = { on: () => () => undefined }
 
-/** Every HostApi faked at its boundary, with the given storage. */
+/** Every HostApi faked at its boundary, with the given storage; `ui` is the app's own components, which have none. */
 function fakeApis(storage: (plugin: string) => Storage): HostApiFactories {
   return {
     app: () => about,
@@ -122,6 +124,11 @@ function fakeApis(storage: (plugin: string) => Storage): HostApiFactories {
     storage,
     system: () => ({ copy: async () => {}, save: async () => false, openExternal() {} }),
     embeds: () => ({ View: () => null, capture: async () => undefined }),
+    toast: () => ({ show: () => ({ dismiss() {} }) }),
+    tabs: () => ({ list: () => [], open() {}, focus() {}, move() {}, close() {} }),
+    attention: () => ({ notify: async () => ({ notification: false, sound: false }) }),
+    commands: () => ({ run: () => false }),
+    ui: () => ui,
   }
 }
 
@@ -219,8 +226,8 @@ export function mountPlugins(input: {
   disabled?: readonly string[]
   bridge?: Parameters<typeof createInstalled>[0]
   stored?: Readonly<Record<string, Json>>
-  /** Shows the production Settings > Plugins page for status-label contracts. */
-  settings?: boolean
+  /** Shows the production Extensions › Plugins rows of the desktop app's own server, which lists these plugins. */
+  plugins?: readonly PluginInfo[]
   /** The client of an Ipc while main provides it, as a desktop window's bridge reports it. Omitted: the web. */
   ipc?: (token: Ipc) => IpcClient<IpcSpec> | undefined
 }) {
@@ -303,8 +310,12 @@ export function mountPlugins(input: {
 
     return (
       <Show when={host.ready()}>
-        <Show when={input.settings}>
-          <PluginsSettings />
+        <Show when={input.plugins}>
+          {(plugins) => (
+            <div data-testid="extension-plugins">
+              <ExtensionPlugins plugins={plugins()} own />
+            </div>
+          )}
         </Show>
         <PluginSlot at="window.bottom" input={{}} />
       </Show>
@@ -357,6 +368,7 @@ function standIn(overrides: Partial<Interface>): Interface {
   return {
     sessions: () => [],
     current: () => undefined,
+    tabs: { list: () => [], open() {}, focus() {}, move() {}, close() {} },
     screen: () => undefined,
     scope: () => ServerScope.local,
     scoped: () => undefined,
@@ -376,7 +388,10 @@ function standIn(overrides: Partial<Interface>): Interface {
     project() {},
     draft() {},
     command() {},
+    run: () => false,
+    notify: async () => ({ notification: false, sound: false }),
     font: () => "fixture mono",
+    mode: () => "dark",
     routing: () => false,
     path: () => "/",
     keybind: () => [],
@@ -602,9 +617,9 @@ export function mountComposerPills(input: { definitions: readonly Entry[] }) {
 }
 
 /**
- * Mounts the real host over the real HostApis of a web window, before the app interface mounts. `attach()` mounts a
- * stand-in for the interface: its layout records each write and reports a tab it opened as visible, its server is
- * the local one, and its mono font is "fixture mono".
+ * Mounts the real host over the real HostApis of a web window, before the app interface mounts, with the window's
+ * toast region. `attach()` mounts a stand-in for the interface: its layout records each write and reports a tab it
+ * opened as visible, its server is the local one, and its mono font is "fixture mono".
  */
 export function mountHostApis(input: { definitions: readonly Entry[] }) {
   const container = document.createElement("div")
@@ -644,6 +659,7 @@ export function mountHostApis(input: { definitions: readonly Entry[] }) {
             <RealHost definitions={input.definitions} captured={captured}>
               <Capture />
             </RealHost>
+            <Toast.Region />
           </DialogProvider>
         </PlatformProvider>
       </LanguageProvider>
@@ -656,6 +672,7 @@ export function mountHostApis(input: { definitions: readonly Entry[] }) {
     writes,
     /** Mounts the interface. */
     attach: () => void captured.apis?.attach(mounted),
+    reload: (id: string) => hosts[0]?.reload(id),
     status: (id: string) => hosts[0]?.state.status[id],
     unmount: () => {
       dispose()

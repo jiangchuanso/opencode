@@ -128,7 +128,8 @@ export interface CommandOption {
   when?: (event: KeyboardEvent) => boolean
   /** The keybind leaves this event to its target, as if the command had no keybind. */
   skip?: (event: KeyboardEvent) => boolean
-  onSelect?: (source?: "palette" | "keybind" | "slash", input?: string) => void | Promise<void>
+  /** From a keybind, returning false declines the key: the event goes on to its target. */
+  onSelect?: (source?: "palette" | "keybind" | "slash", input?: string) => void | false | Promise<void>
   onHighlight?: () => (() => void) | void
 }
 
@@ -520,9 +521,14 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
       }
 
       if (!option) return
+
+      // A command that returns false declines the key, which goes on to its target.
+      const result = option.onSelect?.("keybind")
+
+      if (result === false) return
       event.preventDefault()
       event.stopPropagation()
-      void option.onSelect?.("keybind")
+      void result
     }
 
     onMount(() => {

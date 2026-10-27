@@ -526,10 +526,78 @@ export interface ComposerQuote {
   }
 }
 
-/** The session screen's composer: the parts attached to the routed session's next prompt. */
+/** A model the composer sends a prompt with, as the model picker names it. */
+export interface ComposerModel {
+  /** The provider's id, e.g. `anthropic`. */
+  providerID: string
+  /** The model's id within its provider, e.g. `claude-sonnet-4-5`. */
+  modelID: string
+  /** The model's variant, e.g. `high`. Undefined for the model's default. */
+  variant?: string
+}
+
+/**
+ * The session screen's composer: the routed session's next prompt, with its text, its attached parts and the model it
+ * is sent with. Nothing here sends the prompt; the user does. A write to the draft (`insert`, `setText`, `attach`,
+ * `update`, `detach`) made before the session's stored draft loads waits for it, then applies to the session routed
+ * when it was made, in call order with the other draft writes; the stored draft is never replaced.
+ */
 export interface Composer {
   /**
-   * Attaches a file, a note or a quote to the next prompt. Focus stays where it is; call `focus` to move it.
+   * The prompt's text, as plain text: a mention reads as its `@` text, and attachments and attached parts are left
+   * out. In shell mode, the shell command. Empty until the session's draft loads, and in a subagent's session, which
+   * has no composer. Reactive.
+   *
+   * @example
+   * const empty = () => screen.composer.text().trim() === ""
+   */
+  text(): string
+  /**
+   * Inserts plain text into the prompt as typing would, at the cursor the user last left in it, else at the end, and
+   * moves the cursor after it. Selected text is not replaced. The text is not parsed: `@path` stays text rather than a
+   * mention, and line breaks stay line breaks. Focus stays where it is; call `focus` to move it. Before the session's
+   * draft loads, it waits and applies in call order. Does nothing in a subagent's session, which has no composer, or
+   * for empty text.
+   *
+   * @param text - The text to insert.
+   *
+   * @example
+   * screen.composer.insert(`Explain ${path}`)
+   */
+  insert(text: string): void
+  /**
+   * Replaces the prompt's text, mentions included, and moves the cursor to the end. Attachments and attached parts
+   * stay. Before the session's draft loads, it waits and applies in call order. Does nothing in a subagent's session,
+   * which has no composer.
+   *
+   * @param text - The new text. Empty clears the text.
+   */
+  setText(text: string): void
+  /**
+   * The model the next prompt is sent with: the user's choice for the routed session, else the session's agent
+   * default, else the app's default. Undefined while the model catalog loads, when no connected provider offers the
+   * choice, and in a subagent's session, which has no composer. Reactive.
+   */
+  model(): ComposerModel | undefined
+  /**
+   * Selects the model for the routed session's next prompts, as picking it in the model picker does: it becomes the
+   * session's choice and the first recent model. Without `variant`, the model keeps the variant the picker would show
+   * for it. Returns false, and changes nothing, while the model catalog loads, when no connected provider offers the
+   * model, when the model has no such variant, and in a subagent's session.
+   *
+   * @param model - The model, and optionally its variant.
+   */
+  setModel(model: ComposerModel): boolean
+  /**
+   * Selects a variant of the current model, as the composer's variant control does. Returns false, and changes
+   * nothing, when there is no current model, when the model has no such variant, and in a subagent's session.
+   *
+   * @param variant - The variant. Undefined selects the model's default.
+   */
+  setVariant(variant: string | undefined): boolean
+  /**
+   * Attaches a file, a note or a quote to the next prompt. Focus stays where it is; call `focus` to move it. Before
+   * the session's draft loads, it waits and applies in call order.
    *
    * @param part - The part to attach.
    */
@@ -551,7 +619,8 @@ export interface Composer {
    */
   focus(commentID?: string): void
   /**
-   * Changes an attached part. Files, notes and quotes alike; a note or a quote takes only `comment`.
+   * Changes an attached part. Files, notes and quotes alike; a note or a quote takes only `comment`. Before the
+   * session's draft loads, it waits and applies in call order.
    *
    * @param id - The part's `commentID`.
    * @param patch - The fields to change.
@@ -566,11 +635,18 @@ export interface Composer {
     },
   ): void
   /**
-   * Removes an attached part.
+   * Removes an attached part. Before the session's draft loads, it waits and applies in call order.
    *
    * @param id - The part's `commentID`.
    */
   detach(id: string): void
+  /**
+   * Whether keyboard focus is in the prompt now. Not reactive: read it where you act, such as in `Command.run`.
+   *
+   * @example
+   * run: () => (screen.composer.focused() ? send() : false)
+   */
+  focused(): boolean
 }
 
 /** Work the session moved to the background. */
@@ -1000,6 +1076,32 @@ export interface Desktop {
    * @param app - The app's name.
    */
   installed(app: string): Promise<boolean>
+  /**
+   * Asks the user for files or folders with the system's open dialog. Desktop only: a browser never tells the page
+   * where a picked file is.
+   *
+   * @param options - What to pick.
+   * @returns The absolute paths the user picked, in the order the dialog reports them; empty when the user cancelled.
+   *   Rejects when the dialog cannot open.
+   *
+   * @example
+   * ```ts
+   * const [folder] = (await ctx.desktop?.pick({ directory: true, title: ctx.t("pick.folder") })) ?? []
+   * ```
+   */
+  pick(options?: PickOptions): Promise<readonly string[]>
+}
+
+/** What `Desktop.pick` asks for. */
+export interface PickOptions {
+  /** Picks folders instead of files. Defaults to false. */
+  readonly directory?: boolean
+  /** Lets the user pick more than one. Defaults to false. */
+  readonly multiple?: boolean
+  /** The dialog's title; the system's default title when omitted. Not every system shows it. */
+  readonly title?: string
+  /** File extensions to offer, without the dot (e.g. `["json"]`); every file when omitted. Ignored for folders. */
+  readonly extensions?: readonly string[]
 }
 
 /** The interface language and its writing direction. */
@@ -1022,6 +1124,18 @@ export interface Appearance {
    * @param kind - `mono`, the terminal font.
    */
   font(kind: "mono"): string
+  /**
+   * The color scheme the interface shows: the user's choice in Settings › Appearance, with "System" resolved to the
+   * system's current scheme. Before the app interface mounts, the system's scheme. Reactive.
+   * - `light`: dark text on light backgrounds.
+   * - `dark`: light text on dark backgrounds.
+   *
+   * @example
+   * ```ts
+   * const background = () => (ctx.appearance.mode() === "dark" ? "#000" : "#fff")
+   * ```
+   */
+  mode(): "light" | "dark"
 }
 
 /** The app's route. */
@@ -1153,6 +1267,319 @@ export interface Dialogs {
   ): DialogHandle
   /** Some dialog is open. Reactive. */
   active(): boolean
+  /**
+   * Asks the user to confirm an action, in the app's own confirmation dialog. Opens as `open` does, with the same
+   * lifetime: it waits for the app interface, and closes with the owner that asked, else with the plugin.
+   *
+   * @param options - The question and its buttons.
+   * @returns True only when the user chose the confirm button. False when they chose cancel, pressed Escape or clicked
+   *   outside, when another dialog replaced it, and when it closed or never opened because its owner or plugin went
+   *   away.
+   *
+   * @example
+   * ```ts
+   * if (await ctx.dialogs.confirm({ title: ctx.t("end.title"), confirm: ctx.t("end"), danger: true })) end()
+   * ```
+   */
+  confirm(options: ConfirmOptions): Promise<boolean>
+  /**
+   * Tells the user something they must acknowledge, in a dialog with one button. Opens and closes as `confirm` does.
+   *
+   * @param options - What the dialog says.
+   * @returns Resolves once the dialog closes, however it closes.
+   *
+   * @example
+   * ```ts
+   * await ctx.dialogs.alert({ title: ctx.t("export.done"), description: path })
+   * ```
+   */
+  alert(options: AlertOptions): Promise<void>
+  /**
+   * Asks the user for a line of text, in the app's own dialog. Enter submits. Opens and closes as `confirm` does.
+   *
+   * @param options - The question, the field and its button.
+   * @returns The text the user submits, which is never empty: the submit button and Enter do nothing while the field
+   *   is empty. Undefined when the user cancels, dismisses the dialog, or it closes with its owner.
+   *
+   * @example
+   * ```ts
+   * const invite = await ctx.dialogs.prompt({ title: ctx.t("join.title"), placeholder: "https://…" })
+   * ```
+   */
+  prompt(options: PromptOptions): Promise<string | undefined>
+  /**
+   * Asks the user to pick one option from a searchable list, in the app's own dialog, as the command palette lists
+   * commands. Opens and closes as `confirm` does.
+   *
+   * @param options - The title, the search field and the options.
+   * @returns The picked option's `value`; undefined when the user dismisses the dialog or it closes with its owner.
+   *
+   * @example
+   * ```ts
+   * const url = await ctx.dialogs.select({ title: ctx.t("links"), options: links.map((url) => ({ title: url, value: url })) })
+   * ```
+   */
+  select<T>(options: SelectOptions<T>): Promise<T | undefined>
+}
+
+/** What `Dialogs.confirm` asks. */
+export interface ConfirmOptions {
+  /** The question, as the dialog's title. */
+  readonly title: string
+  /** More detail under the title, such as what the action cannot undo. Omit it for none. */
+  readonly description?: string
+  /** The confirm button's label. Defaults to the app's "Confirm". */
+  readonly confirm?: string
+  /** The cancel button's label. Defaults to the app's "Cancel". */
+  readonly cancel?: string
+  /**
+   * Styles the confirm button as destructive, for an action that deletes or ends something, and starts focus on
+   * Cancel. Defaults to false.
+   */
+  readonly danger?: boolean
+}
+
+/** What `Dialogs.alert` says. */
+export interface AlertOptions {
+  /** The headline, as the dialog's title. */
+  readonly title: string
+  /** More detail under the title. Omit it for none. */
+  readonly description?: string
+  /** The button's label. Defaults to the app's "OK". */
+  readonly ok?: string
+}
+
+/** What `Dialogs.prompt` asks. */
+export interface PromptOptions {
+  /** The question, as the dialog's title. */
+  readonly title: string
+  /** More detail under the title. Omit it for none. */
+  readonly description?: string
+  /** The field's placeholder. Omit it for none. */
+  readonly placeholder?: string
+  /** The field's initial text, selected so typing replaces it. Defaults to "". */
+  readonly value?: string
+  /**
+   * Hides what the user types, for a password or a token. The host neither stores nor logs the value. Defaults to
+   * false.
+   */
+  readonly secret?: boolean
+  /** The submit button's label. Defaults to the app's "Submit". */
+  readonly submit?: string
+}
+
+/** One option of `Dialogs.select`. */
+export interface SelectOption<T> {
+  /** The option's label; search matches it. */
+  readonly title: string
+  /** What `select` resolves with when the user picks this option. */
+  readonly value: T
+  /** A muted second line; search matches it too. Omit it for none. */
+  readonly description?: string
+  /** The heading the option lists under. Options of one group list together, in the order first seen. */
+  readonly group?: string
+}
+
+/** What `Dialogs.select` asks. */
+export interface SelectOptions<T> {
+  /** The dialog's title. */
+  readonly title: string
+  /** The search field's placeholder. Defaults to the app's "Search". */
+  readonly placeholder?: string
+  /** The options, in display order. */
+  readonly options: readonly SelectOption<T>[]
+  /** The value of the option to highlight first, compared with `===`. Defaults to the first option. */
+  readonly current?: T
+}
+
+/** A button on a toast. */
+export interface ToastAction {
+  /** The button's label. */
+  readonly label: string
+  /** Runs when the user clicks it; the toast then closes. A throw is logged to the console and the toast still closes. */
+  run(): void
+}
+
+/** What `Toasts.show` shows. */
+export interface ToastOptions {
+  /** The headline. */
+  readonly title: string
+  /** More detail under the title. Omit it for none. */
+  readonly description?: string
+  /**
+   * The toast's tone. Defaults to `default`.
+   * - `default`: neutral information.
+   * - `success`: something finished; shows a check icon unless `icon` is set.
+   * - `error`: something failed.
+   * - `loading`: something is in progress. Pair it with `persistent` and dismiss it when the work ends.
+   */
+  readonly variant?: "default" | "success" | "error" | "loading"
+  /** An icon before the title. Omit it for none, or the variant's own. */
+  readonly icon?: IconName
+  /** Milliseconds before the toast closes itself. Ignored when `persistent` is true. Defaults to the app's 5 seconds. */
+  readonly duration?: number
+  /** Stays until the user or `dismiss` closes it, instead of closing after `duration`. Defaults to false. */
+  readonly persistent?: boolean
+  /** Buttons on the toast, in order. Omit it for none. */
+  readonly actions?: readonly ToastAction[]
+}
+
+/** One toast `Toasts.show` showed. */
+export interface ToastHandle {
+  /** Closes the toast. Does nothing once it closed. */
+  dismiss(): void
+}
+
+/**
+ * The app's toasts: short messages in a corner of the window that do not take focus. Every toast of a plugin that is
+ * still showing closes when the plugin goes away (disabled, reloaded or removed), so no button outlives the code it
+ * runs; a toast does not close with the component or `createKeyed` run that showed it.
+ */
+export interface Toasts {
+  /**
+   * Shows a toast at once, also before the app interface mounts: it appears as soon as the window shows its toasts.
+   * Showing a toast equal to one still showing (same title, description, variant, duration, persistence and action
+   * labels) replaces that one instead of stacking a copy.
+   *
+   * @param options - What the toast shows.
+   * @returns The toast's handle.
+   */
+  show(options: ToastOptions): ToastHandle
+}
+
+/** What `Attention.notify` sends. */
+export interface NotifyOptions {
+  /** The notification's headline. */
+  readonly title: string
+  /** The notification's body. Omit it for none. */
+  readonly message?: string
+  /**
+   * Which of the user's notification settings it follows, both the system notification and the sound. Defaults to
+   * `default`.
+   * - `default`: Settings › Notifications › Agent ("complete or needs attention") and its sound.
+   * - `error`: Settings › Notifications › Errors and its sound.
+   */
+  readonly variant?: "default" | "error"
+  /** The session the notification is about: clicking the notification opens and shows it, as `Tabs.open` does. */
+  readonly session?: {
+    /** The server's `ServerRef.id`. */
+    readonly server: string
+    /** The session's id on that server. */
+    readonly id: string
+  }
+  /** Plays the sound the user chose for `variant`, when its sound is on. False never plays one. Defaults to true. */
+  readonly sound?: boolean
+  /**
+   * Shows the notification and plays its sound at most once across the app's windows, each of which runs its own
+   * instance of the plugin: the first window to send an id wins, and later sends with that id do nothing. Use an id
+   * of the event, such as a run's id. Omit it to always notify.
+   */
+  readonly id?: string
+}
+
+/** What `Attention.notify` did. */
+export interface NotifyResult {
+  /**
+   * The app asked the system to show the notification. False when the user turned it off for `variant`, when one of
+   * the app's windows has focus, or when another window already sent `id`. The system may still hide one it was
+   * asked to show, for example when the user denied a browser's permission.
+   */
+  readonly notification: boolean
+  /** The sound started. False when `sound` is false, the user turned it off for `variant`, or `id` was sent before. */
+  readonly sound: boolean
+}
+
+/** Gets the user's attention while they look elsewhere, with the same rules as the app's own notifications. */
+export interface Attention {
+  /**
+   * Sends a system notification while no window of the app has focus, and plays a sound, each only when the user's
+   * notification settings for `variant` allow it. Clicking the notification brings the window forward and opens
+   * `session`, when given. Before the app interface mounts, it waits for it.
+   *
+   * @param options - What to send.
+   * @returns What it did; never rejects.
+   */
+  notify(options: NotifyOptions): Promise<NotifyResult>
+}
+
+/** The commands the app runs from its command palette, keybinds and slash menu. */
+export interface Commands {
+  /**
+   * Runs a command as choosing it in the command palette does: a published plugin command (`${plugin}.${id}`, any
+   * plugin's) or one of the app's own. The app's command ids are not a stable API and may change between releases.
+   * A command that is listed but disabled does not run. A command that runs async work is not awaited.
+   *
+   * @param id - The command's id.
+   * @returns False when no enabled command has the id, and before the app interface mounts, when the app has
+   *   registered no commands yet.
+   */
+  run(id: string): boolean
+}
+
+/** One tab of the shell's tab strip. */
+export interface ShellTab {
+  /** The tab's key, `SessionRef.tab` for a session's tab. Stays the same while the tab is open. */
+  readonly key: string
+  /** The session the tab shows; undefined for a draft. */
+  readonly session: SessionRef | undefined
+  /** The tab is the one on screen. */
+  readonly active: boolean
+}
+
+/**
+ * The shell's tab strip: the sessions and drafts open as tabs. Nothing throws before the app interface mounts:
+ * `list` is empty, and writes wait and apply in call order once it mounts.
+ */
+export interface Tabs {
+  /** The open tabs, in strip order. Reactive. */
+  list(): readonly ShellTab[]
+  /**
+   * Opens a session as a tab at the end of the strip, or keeps its open tab where it is. A tab that shows the session
+   * already, such as a subagent opened from its parent's tab, is its tab. Does nothing when the app does not list the
+   * server. A session id the server does not know still opens a tab, which shows the app's "session not found" page.
+   *
+   * @param session - The session's server and id.
+   * @param options - Whether to show the tab.
+   *
+   * @example
+   * ```ts
+   * ctx.tabs.open({ server: session.server.id, id: session.id }, { focus: true })
+   * ```
+   */
+  open(
+    session: {
+      /** The server's `ServerRef.id`. */
+      readonly server: string
+      /** The session's id on that server. */
+      readonly id: string
+    },
+    options?: {
+      /**
+       * Also shows the tab and the session in it, as clicking the session in the session list does. Defaults to
+       * false: the tab opens in the background.
+       */
+      readonly focus?: boolean
+    },
+  ): void
+  /**
+   * Shows an open tab, as a click on it does. Does nothing when no open tab has the key.
+   *
+   * @param key - The tab's `ShellTab.key`.
+   */
+  focus(key: string): void
+  /**
+   * Moves an open tab to a place in the strip. Does nothing when no open tab has the key.
+   *
+   * @param key - The tab's `ShellTab.key`.
+   * @param index - The tab's new place, from 0; clamped to the strip.
+   */
+  move(key: string, index: number): void
+  /**
+   * Closes an open tab, as the user does: it lists under recently closed tabs. Does nothing when no open tab has the key.
+   *
+   * @param key - The tab's `ShellTab.key`.
+   */
+  close(key: string): void
 }
 
 /** Props of `Embeds.View`. */
@@ -1194,4 +1621,430 @@ export interface Embeds {
    * @param id - The embed's id.
    */
   capture(id: string): Promise<Uint8Array | undefined>
+}
+
+/** Props of `Ui.Icon`. */
+export interface UiIconProps {
+  /** The artwork, by its name in the app's icon catalog. */
+  readonly name: IconName
+  /**
+   * The icon's size. Defaults to `normal`.
+   * - `small`: 14px.
+   * - `normal`: 16px.
+   * - `large`: 20px.
+   */
+  readonly size?: "small" | "normal" | "large"
+  /** Classes of the `svg`, for layout and color: the icon draws in `currentColor`. */
+  readonly class?: string
+}
+
+/** Props of `Ui.Button`. */
+export interface UiButtonProps {
+  /** The button's text. */
+  readonly children: JSX.Element
+  /** Runs when the user clicks the button, or presses Enter or Space on it. Not called while it is disabled or busy. */
+  readonly onClick?: (event: MouseEvent) => void
+  /**
+   * How the button looks. Defaults to `neutral`.
+   * - `neutral`: a bordered button for most actions.
+   * - `contrast`: the main action of a dialog or form.
+   * - `ghost`: no border or background until hovered, for toolbars.
+   * - `ghost-muted`: like `ghost`, with muted text, for secondary toolbar actions.
+   * - `danger`: an action that deletes or discards.
+   */
+  readonly variant?: "neutral" | "contrast" | "ghost" | "ghost-muted" | "danger"
+  /**
+   * The button's height. Defaults to `normal`.
+   * - `small`: for dense rows.
+   * - `normal`: for most places.
+   * - `large`: for toolbars that use large icon buttons.
+   */
+  readonly size?: "small" | "normal" | "large"
+  /** An icon before the text. Omit it for none. */
+  readonly icon?: IconName
+  /** The button cannot be clicked. Defaults to false. */
+  readonly disabled?: boolean
+  /**
+   * The action is running: a loading indicator replaces the icon, and the button cannot be clicked until it is false
+   * again. Defaults to false.
+   */
+  readonly busy?: boolean
+  /** `submit` submits the form the button is in. Defaults to `button`. */
+  readonly type?: "button" | "submit"
+  /** Takes focus when its dialog opens, as the app's own dialogs focus their main button. Defaults to false. */
+  readonly autofocus?: boolean
+  /** Classes of the button, for layout. The app's styles give it its look. */
+  readonly class?: string
+}
+
+/** Props of `Ui.IconButton`. */
+export interface UiIconButtonProps {
+  /** The button's icon. */
+  readonly icon: IconName
+  /** The button's accessible name, which screen readers announce. Pass translated copy; it is not shown. */
+  readonly label: string
+  /** Runs when the user clicks the button, or presses Enter or Space on it. Not called while it is disabled or busy. */
+  readonly onClick?: (event: MouseEvent) => void
+  /**
+   * How the button looks. Defaults to `ghost-muted`.
+   * - `neutral`: a bordered button.
+   * - `ghost`: no border or background until hovered.
+   * - `ghost-muted`: like `ghost`, with a muted icon, for toolbars.
+   */
+  readonly variant?: "neutral" | "ghost" | "ghost-muted"
+  /**
+   * The button's size. Defaults to `normal`.
+   * - `small`: for dense rows.
+   * - `normal`: for most places.
+   * - `large`: for panel toolbars.
+   */
+  readonly size?: "small" | "normal" | "large"
+  /** The button cannot be clicked. Defaults to false. */
+  readonly disabled?: boolean
+  /** The button is a toggle that is on: it shows pressed and reports `aria-pressed`. Omit it for a plain button. */
+  readonly pressed?: boolean
+  /**
+   * The action is running: a loading indicator replaces the icon, and the button cannot be clicked until it is false
+   * again. Defaults to false.
+   */
+  readonly busy?: boolean
+  /** Classes of the button, for layout. The app's styles give it its look. */
+  readonly class?: string
+}
+
+/** Props of `Ui.Tooltip`. */
+export interface UiTooltipProps {
+  /** What the tooltip shows: usually translated text. */
+  readonly value: JSX.Element
+  /** Keys shown after `value`, such as `ctx.keybinds.keybind(command)`. Omit it, or pass an empty list, for none. */
+  readonly keys?: readonly string[]
+  /** Where the tooltip opens from the element. Defaults to `top`; it flips when there is no room. */
+  readonly placement?: "top" | "bottom" | "left" | "right"
+  /** The element that shows the tooltip while the pointer rests on it or it has keyboard focus. */
+  readonly children: JSX.Element
+}
+
+/** An action in `UiMenuProps.items`. */
+export interface UiMenuItem {
+  /** Marks the entry as an action. Optional: an entry without `type` is an action. */
+  readonly type?: "item"
+  /** The action's text. */
+  readonly label: string
+  /** An icon before the text. Omit it for none. */
+  readonly icon?: IconName
+  /** Keys shown at the end of the row, such as `ctx.keybinds.keybind(command)`. Omit it for none. */
+  readonly keys?: readonly string[]
+  /** The action cannot be chosen. Defaults to false. */
+  readonly disabled?: boolean
+  /** Runs when the user chooses the action; the menu then closes. */
+  onSelect(): void
+}
+
+/** A line between entries in `UiMenuProps.items`. */
+export interface UiMenuSeparator {
+  /** Marks the entry as a separator. */
+  readonly type: "separator"
+}
+
+/** Actions under a heading in `UiMenuProps.items`. */
+export interface UiMenuGroup {
+  /** Marks the entry as a group. */
+  readonly type: "group"
+  /** The group's heading. */
+  readonly label: string
+  /** The group's actions, in order. */
+  readonly items: readonly UiMenuItem[]
+}
+
+/** One entry of `UiMenuProps.items`: an action, a separator, or a group of actions under a heading. */
+export type UiMenuEntry = UiMenuItem | UiMenuSeparator | UiMenuGroup
+
+/** Props of `Ui.Menu`. */
+export interface UiMenuProps {
+  /** The trigger's accessible name, and its text when `trigger` is `button`. Pass translated copy. */
+  readonly label: string
+  /** The menu's entries, in order. */
+  readonly items: readonly UiMenuEntry[]
+  /**
+   * The button that opens the menu. Defaults to `icon`.
+   * - `icon`: an icon button, as `Ui.IconButton` with the `ghost-muted` look.
+   * - `button`: a button that shows `label`, as `Ui.Button`.
+   */
+  readonly trigger?: "icon" | "button"
+  /** The trigger's icon. Defaults to the "more" dots for an `icon` trigger, and to no icon for a `button` trigger. */
+  readonly icon?: IconName
+  /** Where the menu opens from the trigger. Defaults to `bottom-end`; it flips when there is no room. */
+  readonly placement?: "bottom-start" | "bottom-end" | "top-start" | "top-end"
+  /** The trigger cannot open the menu. Defaults to false. */
+  readonly disabled?: boolean
+}
+
+/** Props of `Ui.Loader`. */
+export interface UiLoaderProps {
+  /**
+   * The indicator's size. Defaults to `normal`.
+   * - `small`: 14px, for buttons and dense rows.
+   * - `normal`: 16px.
+   * - `large`: 20px, for a pane that loads.
+   */
+  readonly size?: "small" | "normal" | "large"
+  /** Classes of the indicator, for layout and color. */
+  readonly class?: string
+}
+
+/** Props of `Ui.Dialog`. */
+export interface UiDialogProps {
+  /** The dialog's title, which also names it for screen readers. */
+  readonly title: string
+  /** Text under the title. Omit it for none. */
+  readonly description?: string
+  /** The dialog's content, with the app's dialog padding. It scrolls when it is taller than the dialog. */
+  readonly children?: JSX.Element
+  /** The dialog's buttons, aligned to the end of its last row. Omit it for none. */
+  readonly footer?: JSX.Element
+  /**
+   * The dialog's size. Defaults to `fit`.
+   * - `fit`: 480px wide and as tall as its content.
+   * - `normal`: 480 by 368px.
+   * - `large`: 640 by 480px.
+   * - `x-large`: up to 980 by 600px, smaller in a small window.
+   */
+  readonly size?: "fit" | "normal" | "large" | "x-large"
+  /**
+   * Shows the close button in the header, labelled with the app's "Close". Escape and a click outside close the dialog
+   * either way. Defaults to true.
+   */
+  readonly closable?: boolean
+}
+
+/** Props of `Ui.Switch`. */
+export interface UiSwitchProps {
+  /** The switch is on. */
+  readonly checked: boolean
+  /** Runs with the new state when the user flips the switch. Pass it on to `checked` to keep the switch in step. */
+  readonly onChange: (checked: boolean) => void
+  /** The switch's label, which also names it for screen readers. Pass translated copy. */
+  readonly label: string
+  /** Hides the label from view and keeps it for screen readers, for a row that shows its own text. Defaults to false. */
+  readonly hideLabel?: boolean
+  /** Text under the label. Omit it for none. */
+  readonly description?: string
+  /** The switch cannot be flipped. Defaults to false. */
+  readonly disabled?: boolean
+}
+
+/** Props of `Ui.TextInput`. */
+export interface UiTextInputProps {
+  /** The field's text. */
+  readonly value: string
+  /** Runs with the field's text on every edit. Pass it on to `value` to keep the field in step. */
+  readonly onInput: (value: string) => void
+  /** The field's accessible name, which screen readers announce. Pass translated copy; it is not shown. */
+  readonly label: string
+  /** Text the empty field shows. Omit it for none. */
+  readonly placeholder?: string
+  /** Runs with the field's text when the user presses Enter, except while an input method composes text. */
+  readonly onSubmit?: (value: string) => void
+  /**
+   * What the field holds. Defaults to `text`.
+   * - `text`: plain text.
+   * - `password`: hidden text.
+   * - `search`: a search query.
+   * - `url`: a web address.
+   */
+  readonly type?: "text" | "password" | "search" | "url"
+  /**
+   * The field's height. Defaults to `normal`.
+   * - `normal`: 28px.
+   * - `large`: 32px, as in dialogs.
+   */
+  readonly size?: "normal" | "large"
+  /** The field cannot be edited. Defaults to false. */
+  readonly disabled?: boolean
+  /** Shows the field as invalid and reports `aria-invalid`. Defaults to false. */
+  readonly invalid?: boolean
+  /** Takes focus when its dialog opens. Defaults to false. */
+  readonly autofocus?: boolean
+  /** Classes of the field, for layout. The app's styles give it its look. */
+  readonly class?: string
+}
+
+/** Props of `Ui.Keybind`. */
+export interface UiKeybindProps {
+  /** The keys, one chip each, as `Keybinds.keybind` and `Keybinds.keys` return them. Empty shows nothing. */
+  readonly keys: readonly string[]
+  /** Classes of the chips' row, for layout. */
+  readonly class?: string
+}
+
+/** Props of `Ui.Markdown`. */
+export interface UiMarkdownProps {
+  /** The Markdown source. */
+  readonly text: string
+  /** Classes of the rendered block, such as a text size. */
+  readonly class?: string
+}
+
+/** Props of `Ui.Code`. */
+export interface UiCodeProps {
+  /** The code, shown as it is. */
+  readonly content: string
+  /**
+   * The language to highlight, by a highlighter id or a common alias (`ts`, `tsx`, `py`, `json`, `bash`). A language
+   * the app cannot highlight shows plain text; `mermaid` draws the diagram, as the timeline does. Defaults to plain
+   * text.
+   */
+  readonly language?: string
+  /** Classes of the code block, for layout. */
+  readonly class?: string
+}
+
+/**
+ * The app's own components, so a plugin's UI looks and behaves like the app's: the same buttons, menus, dialogs and
+ * fields, in the user's theme, fonts and language. Each takes a small set of props the SDK keeps stable. A component
+ * renders with the context of the plugin that renders it, and works in any of its contributions and dialogs.
+ */
+export interface Ui {
+  /**
+   * An icon from the app's catalog, the artwork every `icon` field of the SDK names.
+   *
+   * @param props - The icon and its size.
+   *
+   * @example
+   * ```tsx
+   * <ctx.ui.Icon name="branch" size="small" />
+   * ```
+   */
+  Icon(props: UiIconProps): JSX.Element
+  /**
+   * A button with text.
+   *
+   * @param props - Its text, look and action.
+   *
+   * @example
+   * ```tsx
+   * <ctx.ui.Button variant="contrast" busy={saving()} onClick={save}>{ctx.t("save")}</ctx.ui.Button>
+   * ```
+   */
+  Button(props: UiButtonProps): JSX.Element
+  /**
+   * A button that shows only an icon. Wrap it in `Tooltip` to show its label on hover.
+   *
+   * @param props - Its icon, accessible name and action.
+   *
+   * @example
+   * ```tsx
+   * <ctx.ui.IconButton icon="outline-rotate-clockwise" label={ctx.t("reload")} onClick={reload} />
+   * ```
+   */
+  IconButton(props: UiIconButtonProps): JSX.Element
+  /**
+   * A tooltip on an element.
+   *
+   * @param props - What it shows, and the element.
+   *
+   * @example
+   * ```tsx
+   * <ctx.ui.Tooltip value={ctx.t("toggle")} keys={ctx.keybinds.keybind(`${ctx.id}.toggle`)}>
+   *   <ctx.ui.IconButton icon="sidebar" label={ctx.t("toggle")} onClick={toggle} />
+   * </ctx.ui.Tooltip>
+   * ```
+   */
+  Tooltip(props: UiTooltipProps): JSX.Element
+  /**
+   * A button that opens a menu of actions.
+   *
+   * @param props - The trigger and the entries.
+   *
+   * @example
+   * ```tsx
+   * <ctx.ui.Menu label={ctx.t("more")} items={[{ label: ctx.t("delete"), icon: "trash", onSelect: remove }]} />
+   * ```
+   */
+  Menu(props: UiMenuProps): JSX.Element
+  /**
+   * The app's loading indicator, for anything that loads, connects or runs that is not the AI working.
+   *
+   * @param props - Its size.
+   *
+   * @example
+   * ```tsx
+   * <Show when={!loading()} fallback={<ctx.ui.Loader />}>{content()}</Show>
+   * ```
+   */
+  Loader(props: UiLoaderProps): JSX.Element
+  /**
+   * The app's dialog frame: title, content and buttons. Render it from `ctx.dialogs.open`; it renders nothing useful
+   * elsewhere.
+   *
+   * @param props - The title, content and buttons.
+   *
+   * @example
+   * ```tsx
+   * ctx.dialogs.open((dialog) => (
+   *   <ctx.ui.Dialog title={ctx.t("about")} footer={<ctx.ui.Button onClick={dialog.close}>{ctx.t("done")}</ctx.ui.Button>}>
+   *     {ctx.t("about.body")}
+   *   </ctx.ui.Dialog>
+   * ))
+   * ```
+   */
+  Dialog(props: UiDialogProps): JSX.Element
+  /**
+   * An on/off switch with a label.
+   *
+   * @param props - Its state, label and handler.
+   *
+   * @example
+   * ```tsx
+   * <ctx.ui.Switch label={ctx.t("wrap")} checked={wrap()} onChange={setWrap} />
+   * ```
+   */
+  Switch(props: UiSwitchProps): JSX.Element
+  /**
+   * A one-line text field.
+   *
+   * @param props - Its text, accessible name and handlers.
+   *
+   * @example
+   * ```tsx
+   * <ctx.ui.TextInput label={ctx.t("name")} value={name()} onInput={setName} onSubmit={save} />
+   * ```
+   */
+  TextInput(props: UiTextInputProps): JSX.Element
+  /**
+   * Keys shown as chips, as menus and tooltips show shortcuts.
+   *
+   * @param props - The keys.
+   *
+   * @example
+   * ```tsx
+   * <ctx.ui.Keybind keys={ctx.keybinds.keybind(`${ctx.id}.toggle`)} />
+   * ```
+   */
+  Keybind(props: UiKeybindProps): JSX.Element
+  /**
+   * Markdown rendered as the timeline renders a message: headings, lists, tables, links, math and highlighted code
+   * blocks with a copy button. On the session screen, links to local files open through the LinkHandler
+   * contributions, as the timeline's do. Rendering is asynchronous: the block fills in shortly after it mounts.
+   *
+   * @param props - The Markdown source.
+   *
+   * @example
+   * ```tsx
+   * <ctx.ui.Markdown text={summary()} />
+   * ```
+   */
+  Markdown(props: UiMarkdownProps): JSX.Element
+  /**
+   * A read-only code block, highlighted as the timeline highlights code, with a copy button. Highlighting is
+   * asynchronous: the block fills in shortly after it mounts.
+   *
+   * @param props - The code and its language.
+   *
+   * @example
+   * ```tsx
+   * <ctx.ui.Code content={JSON.stringify(config, null, 2)} language="json" />
+   * ```
+   */
+  Code(props: UiCodeProps): JSX.Element
 }

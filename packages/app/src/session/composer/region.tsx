@@ -327,6 +327,7 @@ export function createActiveSessionRegion(input: {
 
   return {
     active,
+    focused: () => !!promptRef?.contains(document.activeElement),
     drop: {
       active: () => active()?.drop.active() ?? false,
       input: () => active()?.drop.input(),

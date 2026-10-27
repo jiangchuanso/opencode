@@ -340,7 +340,10 @@ export function createComposerModel(adapter: ComposerAdapter, options?: { queue?
 
       if (!selected) return
 
-      return () => command.trigger(selected.id, "slash", selected.input)
+      // A command declines only keys, so a slash command's `false` means nothing more.
+      return async () => {
+        await command.trigger(selected.id, "slash", selected.input)
+      }
     },
   })
 

@@ -1,4 +1,5 @@
 import type { Component, Owner } from "solid-js"
+import type { PluginInfo } from "@opencode/client/promise"
 import type { Context, Contract, DialogHandle, Dialogs, Live, SessionRef, SessionScreen } from "@opencode/plugin/gui"
 import type { BuiltinPanelTab } from "@opencode/plugin/gui/builtin"
 import type { Bridge, BridgeMessage, EnableState, Installed } from "@opencode/plugin/gui/host"
@@ -11,6 +12,9 @@ type Scope = { owner?: Owner | null; end: () => void; ctx?: Context }
 
 /** The context the session-routing case keeps from inside its plugin. */
 type Kept = { ctx?: Context }
+
+/** What the asking case keeps from inside its plugin: its dialogs, the end of its scope, and that scope's prompt. */
+type Asked = { dialogs?: Dialogs; end?: () => void; prompt?: Promise<string | undefined> }
 
 /** What the pre-mount case reads from inside its plugin's setup. */
 type Reads = { state?: () => string; font?: () => string; prefs?: { value?: { count: number }; ready(): boolean } }
@@ -180,6 +184,249 @@ story("a dialog pushed in the same tick as a reload never mounts", async ({ page
   }, fixture)
 
   expect(shown).toBe(false)
+})
+
+story(
+  "confirm, alert, prompt and select answer once: with the user's pick, else when their dialog or plugin goes away",
+  async ({ page }) => {
+    const result = await page.evaluate(async (fixture) => {
+      const { mountPluginHost, createKeyed, createSignal, until } = await import(fixture)
+      const host = mountPluginHost()
+      const kept: Asked = {}
+      const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+      const button = (label: string) =>
+        Array.from(document.querySelectorAll("button")).find((element) => element.textContent?.trim() === label)
+
+      host.load((ctx: Context) => {
+        const [on, set] = createSignal(true)
+        kept.dialogs = ctx.dialogs
+        kept.end = () => set(false)
+        createKeyed(on, () => void (kept.prompt = ctx.dialogs.prompt({ title: "Scoped prompt" })))
+      }, 0)
+      await until(() => !!document.body.textContent?.includes("Scoped prompt"))
+      // The scope that asked ends: its prompt closes and answers undefined.
+      kept.end?.()
+      const scoped = await kept.prompt
+      const dialogs = kept.dialogs
+
+      if (!dialogs) throw new Error("The fixture plugin never set up")
+
+      const confirmed = dialogs.confirm({ title: "End the meetup?", confirm: "End", danger: true })
+      await until(() => !!button("End"))
+      button("End")?.click()
+
+      const alerted = dialogs.alert({ title: "Meetup ended", ok: "Got it" })
+      await until(() => !!button("Got it"))
+      button("Got it")?.click()
+
+      const picked = dialogs.select({
+        title: "Links",
+        options: [
+          { title: "Alpha", value: "a" },
+          { title: "Beta", value: "b", description: "second" },
+        ],
+      })
+
+      const beta = () =>
+        Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).find((element) =>
+          element.textContent?.includes("Beta"),
+        )
+
+      await until(() => !!beta())
+      beta()?.click()
+
+      const dismissed = dialogs.confirm({ title: "Dismiss me" })
+      await until(() => !!button("Cancel"))
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+
+      const outcome = {
+        scoped,
+        confirmed: await confirmed,
+        alerted: await alerted,
+        picked: await picked,
+        dismissed: await dismissed,
+      }
+
+      await wait(300)
+      host.unmount()
+
+      // Asked of a plugin that went away: nothing opens, and the fallback answers at once.
+      return { ...outcome, late: await dialogs.prompt({ title: "Late" }) }
+    }, fixture)
+
+    expect(result).toEqual({
+      scoped: undefined,
+      confirmed: true,
+      alerted: undefined,
+      picked: "b",
+      dismissed: false,
+      late: undefined,
+    })
+  },
+)
+
+story("a plugin's toasts close when it goes away, and a handle closes only its own toast", async ({ page }) => {
+  const result = await page.evaluate(async (fixture) => {
+    const { mountHostApis, until } = await import(fixture)
+    const shown = (title: string) => !!document.body.textContent?.includes(title)
+    const handles: { dismiss: () => void }[] = []
+    const setups = { count: 0 }
+
+    const host = mountHostApis({
+      definitions: [
+        {
+          id: "fixture",
+          windowEntry: async () => ({
+            default: (ctx: Context) => {
+              // Only the first instance shows toasts, so the reload's instance shows none of its own.
+              if (setups.count++ > 0) return
+              ctx.toast.show({ title: "kept toast", persistent: true })
+              handles.push(ctx.toast.show({ title: "dismissed toast", persistent: true }))
+            },
+          }),
+        },
+      ],
+    })
+
+    await until(() => shown("kept toast") && shown("dismissed toast"))
+    handles[0]?.dismiss()
+    await until(() => !shown("dismissed toast"))
+    const kept = shown("kept toast")
+    host.reload("fixture")
+    await until(() => setups.count === 2 && !shown("kept toast"))
+    host.unmount()
+
+    return { kept, setups: setups.count }
+  }, fixture)
+
+  expect(result).toEqual({ kept: true, setups: 2 })
+})
+
+story("ctx.ui renders the app's own components in a plugin's contribution and dialog", async ({ page }) => {
+  await page.evaluate(async (fixture) => {
+    const { mountSessionRegion, until, createComponent, createSignal, Slot } = await import(fixture)
+
+    // What the components' handlers received, for the test to read.
+    const record = (value: string) => {
+      document.body.dataset.ui = `${document.body.dataset.ui ?? ""}${value};`
+    }
+
+    const host = mountSessionRegion({
+      active: "none:main",
+      definitions: [
+        {
+          id: "fixture",
+          windowEntry: async () => ({
+            default: (ctx: Context) => {
+              const ui = ctx.ui
+              const [on, setOn] = createSignal(false)
+              const [name, setName] = createSignal("")
+
+              const dialog = () =>
+                ctx.dialogs.open((handle) =>
+                  createComponent(ui.Dialog, {
+                    title: "Fixture dialog",
+                    children: "Fixture body",
+                    get footer() {
+                      return createComponent(ui.Button, { onClick: handle.close, children: "Close fixture" })
+                    },
+                  }),
+                )
+
+              ctx.add(Slot, {
+                at: "session.panel.end",
+                render: () => [
+                  createComponent(ui.Icon, { name: "branch" }),
+                  createComponent(ui.Button, { icon: "check", onClick: () => record("button"), children: "Apply" }),
+                  createComponent(ui.Button, { onClick: dialog, children: "Open dialog" }),
+                  createComponent(ui.Tooltip, {
+                    value: "Reload tip",
+                    keys: ["R"],
+                    get children() {
+                      return createComponent(ui.IconButton, { icon: "outline-rotate-clockwise", label: "Reload" })
+                    },
+                  }),
+                  createComponent(ui.Menu, {
+                    label: "Options",
+                    items: [
+                      { type: "group", label: "Fixture group", items: [{ label: "Rename", onSelect() {} }] },
+                      { type: "separator" },
+                      { label: "Delete", icon: "trash", keys: ["Del"], onSelect: () => record("menu") },
+                    ],
+                  }),
+                  createComponent(ui.Loader, { size: "large" }),
+                  createComponent(ui.Switch, {
+                    label: "Wrap",
+                    get checked() {
+                      return on()
+                    },
+                    onChange: setOn,
+                  }),
+                  createComponent(ui.TextInput, {
+                    label: "Name",
+                    get value() {
+                      return name()
+                    },
+                    onInput: setName,
+                    onSubmit: (value: string) => record(`submit ${value}`),
+                  }),
+                  createComponent(ui.Keybind, { keys: ["Ctrl", "K"] }),
+                  createComponent(ui.Markdown, { text: "# Fixture heading\n\nSome *text*." }),
+                  createComponent(ui.Code, { content: "const fence = `\n```\n`", language: "ts" }),
+                ],
+              })
+            },
+          }),
+        },
+      ],
+    })
+
+    host.container.dataset.testid = "ui-host"
+    await until(() => host.status("fixture") === "active")
+  }, fixture)
+
+  const root = page.getByTestId("ui-host")
+  await expect(root.locator('svg[data-slot="icon-svg"] > use[href="#opencode-v2-icon-branch"]')).toHaveCount(1)
+  await expect(root.locator('svg[data-component="loader-v2"]')).toHaveAttribute("width", "20")
+  await expect(root.locator('[data-component="keybind-v2"]')).toHaveText("CtrlK")
+  await expect(root.locator('[data-component="markdown"] h1')).toHaveText("Fixture heading")
+  // A line of backticks in the code does not end its block.
+  const code = root.locator('[data-component="markdown"] code.language-ts')
+  await expect(code).toHaveText("const fence = `\n```\n`")
+  await expect(code.locator("span[style]").first()).toBeVisible()
+
+  const apply = root.getByRole("button", { name: "Apply" })
+  await expect(apply).toHaveAttribute("data-component", "button-v2")
+  await expect(apply.locator('use[href="#opencode-v2-icon-check"]')).toHaveCount(1)
+  await apply.click()
+
+  const reload = root.getByRole("button", { name: "Reload" })
+  await expect(reload).toHaveAttribute("data-component", "icon-button-v2")
+  await reload.hover()
+  await expect(page.locator('[data-component="tooltip-v2"]')).toHaveText("Reload tipR")
+
+  await root.getByRole("button", { name: "Options" }).click()
+  const menu = page.getByRole("menu")
+  await expect(menu.getByText("Fixture group")).toBeVisible()
+  await expect(menu.getByRole("separator")).toHaveCount(1)
+  await menu.getByRole("menuitem", { name: "Delete" }).click()
+
+  // The switch's input is visually hidden under its label, which takes the click.
+  await root.getByText("Wrap", { exact: true }).click()
+  await expect(root.getByRole("switch", { name: "Wrap" })).toBeChecked()
+
+  const field = root.getByRole("textbox", { name: "Name" })
+  await field.fill("acme")
+  await field.press("Enter")
+  await expect(page.locator("body")).toHaveAttribute("data-ui", "button;menu;submit acme;")
+
+  await root.getByRole("button", { name: "Open dialog" }).click()
+  const dialog = page.getByRole("dialog", { name: "Fixture dialog" })
+  await expect(dialog).toContainText("Fixture body")
+  await expect(dialog.locator('[data-slot="dialog-close-button"]')).toHaveCount(1)
+  await dialog.getByRole("button", { name: "Close fixture" }).click()
+  await expect(dialog).toHaveCount(0)
 })
 
 story(
@@ -838,18 +1085,31 @@ story("a contract component reads its provider context and preserves reactive pr
   expect(result).toEqual({ context: "provider", mounts: 1, before: "before", after: "after" })
 })
 
-story("Settings > Plugins shows where each part of a plugin from the config is turned off", async ({ page }, info) => {
-  await page.evaluate(async (fixture) => {
+story("Extensions › Plugins merges the own server's plugins with the desktop GUIs they run", async ({ page }, info) => {
+  const calls = await page.evaluateHandle(async (fixture) => {
     const { mountPlugins, until } = await import(fixture)
+    const calls: string[] = []
 
     const installed: Installed[] = [
+      // A built-in that runs stays hidden; one that failed keeps a row, as nothing else reports it.
+      { id: "review", builtin: true, enabled: true },
       { id: "terminal", builtin: true, enabled: true },
       { id: "acme", builtin: false, enabled: true, server: true, tui: true },
-      // A package with only a GUI part has no other part to tag.
+      // A package with only a GUI part has no other part to tag, and here the server list does not name it.
       { id: "notes", builtin: false, enabled: false, server: false, tui: false },
       // A plugin whose `os` leaves out this system keeps a row that says so, and never loads.
       { id: "windows-only", builtin: false, enabled: true, server: true, unsupported: true },
+      // A bundle main could not read never reaches the window.
+      { id: "garbled", builtin: false, enabled: true, error: "SyntaxError: garbled bundle" },
+      { id: "flaky", builtin: false, enabled: true },
     ]
+
+    const listed = (id: string, features: PluginInfo["features"]): PluginInfo => ({
+      id,
+      source: { type: "package", target: id },
+      features,
+      state: { status: "active" },
+    })
 
     const bridge: Bridge = {
       packaged: false,
@@ -864,33 +1124,81 @@ story("Settings > Plugins shows where each part of a plugin from the config is t
       manager: {
         initial: Promise.resolve(installed),
         list: async () => installed,
-        enable: async () => {},
-        disable: async () => {},
-        reload: async () => {},
+        enable: async (id) => void calls.push(`enable ${id}`),
+        disable: async (id) => void calls.push(`disable ${id}`),
+        reload: async (id) => void calls.push(`reload ${id}`),
       },
     }
 
-    const host = mountPlugins({
-      settings: true,
-      bridge,
-      definitions: installed.flatMap((item) =>
-        item.unsupported ? [] : [{ id: item.id, windowEntry: async () => ({ default: () => {} }) }],
-      ),
+    const fails = (message: string) => async () => ({
+      default: () => {
+        throw new Error(message)
+      },
     })
 
-    await until(() => !!host.container.textContent?.includes("cli.json"))
+    const host = mountPlugins({
+      bridge,
+      plugins: [
+        listed("acme", { gui: true, server: true, tui: true }),
+        listed("windows-only", { gui: true, server: true }),
+        listed("flaky", { gui: true }),
+        // A plugin without a GUI lists its name only.
+        listed("lint-rules", { server: true }),
+        // The server's own built-ins are not listed, as on every server.
+        { ...listed("opencode-builtin", { server: true }), source: { type: "builtin" } },
+      ],
+      definitions: [
+        { id: "review", windowEntry: async () => ({ default: () => {} }) },
+        { id: "terminal", windowEntry: fails("terminal broke") },
+        { id: "acme", windowEntry: async () => ({ default: () => {} }) },
+        { id: "notes", windowEntry: async () => ({ default: () => {} }) },
+        { id: "flaky", windowEntry: fails("flaky broke") },
+      ],
+    })
+
+    await until(() => !!host.container.textContent?.includes("cli.json") && host.status("flaky") === "failed")
+
+    return calls
   }, fixture)
-  const settings = page.getByRole("region", { name: "Plugins", exact: true })
-  await settings.screenshot({ path: info.outputPath("plugin-parts.png") })
+
+  const plugins = page.getByTestId("extension-plugins")
+  await plugins.screenshot({ path: info.outputPath("extension-plugins.png") })
+  // One row per plugin id, in the server's order, then what only main reports, then failed built-ins.
+  await expect(plugins.locator(".settings-extension-name")).toHaveText([
+    "acme",
+    "windows-only",
+    "flaky",
+    "lint-rules",
+    "notes",
+    "garbled",
+    "terminal",
+  ])
   // Only plugins from the config tag their other parts, and one note says how to turn those off.
-  await expect(settings.getByText("Server", { exact: true })).toHaveCount(1)
-  await expect(settings.getByText("TUI", { exact: true })).toHaveCount(1)
-  await expect(settings.getByText(/Switches turn off only a plugin's desktop UI/)).toHaveCount(1)
-  await expect(settings.getByText("Not available on this system.", { exact: true })).toBeVisible()
+  await expect(plugins.getByText("Server", { exact: true })).toHaveCount(1)
+  await expect(plugins.getByText("TUI", { exact: true })).toHaveCount(1)
+  await expect(plugins.getByText(/Switches turn off only a plugin's desktop UI/)).toHaveCount(1)
+  await expect(plugins.getByText("Not available on this system.", { exact: true })).toBeVisible()
+  // An error shows its first line; the rest, such as a stack trace, is behind a toggle that a one-line error lacks.
+  await expect(plugins.getByText("SyntaxError: garbled bundle", { exact: true })).toBeVisible()
+  await expect(plugins.getByText("Error: flaky broke", { exact: true })).toBeVisible()
+  await expect(plugins.getByText("Error: terminal broke", { exact: true })).toBeVisible()
+  await expect(plugins.getByRole("button", { name: "Show details" })).toHaveCount(2)
+  const flaky = plugins.locator(".settings-extension-row").filter({ hasText: "flaky" })
+  await flaky.getByRole("button", { name: "Show details" }).press("Enter")
+  await expect(flaky.locator("pre")).toHaveText(/^Error: flaky broke\s+at /)
+  await expect(flaky.getByRole("button", { name: "Hide details" })).toHaveAttribute("aria-expanded", "true")
+  await expect(plugins.getByText("Failed", { exact: true })).toHaveCount(2)
+  await expect(plugins.getByText("Built-in", { exact: true })).toHaveCount(1)
   // A built-in always runs, so it has no switch; the switches carry on and off without a status label.
-  await expect(settings.getByRole("switch")).toHaveCount(2)
-  await expect(settings.getByRole("switch", { name: "terminal" })).toHaveCount(0)
-  await expect(settings.getByText("Active", { exact: true })).toHaveCount(0)
+  await expect(plugins.getByRole("switch")).toHaveCount(3)
+  await expect(plugins.getByRole("switch", { name: "terminal" })).toHaveCount(0)
+  await expect(plugins.getByRole("button", { name: "Reload" })).toHaveCount(4)
+  await expect(plugins.getByText("Active", { exact: true })).toHaveCount(0)
+
+  // The fixture mounts below the story, out of the viewport, so the controls are driven from the keyboard.
+  await plugins.getByRole("switch", { name: "acme" }).press("Space")
+  await plugins.getByRole("button", { name: "Reload" }).nth(1).press("Enter")
+  expect(await calls.jsonValue()).toEqual(["disable acme", "reload flaky"])
 })
 
 const invalidSetups = ["promise", "thenable"]

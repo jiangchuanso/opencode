@@ -200,6 +200,12 @@ OpenCode Desktop loads GUI entries from its own background server, which already
 they never add a new source of code. Configure the plugin in the global `opencode.json(c)` to make its GUI available in
 every window.
 
+<Callout type="note">
+  The TUI reads its plugins from `cli.json`, but the desktop app reads only `opencode.json(c)`. A package that shipped
+  only a TUI part, and that users list in `cli.json`, must also be listed in `opencode.json(c)` once it adds
+  `./gui-experimental`.
+</Callout>
+
 The desktop app's main process lists the plugins and reads their bundles from its own server, with a credential that
 only it holds, and sends windows the same set. A window cannot supply main-process code.
 
@@ -220,13 +226,13 @@ vite build --watch
 - An installed package's GUI changes only with its version.
 - Changing the plugin's `options` in `opencode.json(c)` reloads the plugin.
 - `opencode plugin update` replaces a package's GUI once the update finishes.
-- [**Settings > Plugins**](/plugins#desktop) lists the plugin with a switch that turns its GUI off. To remove it, remove
-  it from `opencode.json(c)` or run `opencode plugin remove <package>`.
+- [**Settings > Extensions > Plugins**](/plugins#desktop) lists the plugin with a switch that turns its GUI off. To
+  remove it, remove it from `opencode.json(c)` or run `opencode plugin remove <package>`.
 
 <Callout type="note">
   The app's own plugins reserve their ids. If your plugin's id is one of them, nests under one with a `.`, has one
-  nested under it, or is in the `opencode` namespace, its GUI does not load, and **Settings > Plugins** lists it as not
-  loaded.
+  nested under it, or is in the `opencode` namespace, its GUI does not load, and **Settings > Extensions > Plugins**
+  lists it as not loaded.
 </Callout>
 
 ## Define the GUI plugin
@@ -254,7 +260,7 @@ export const definition = Plugin.define({
   server part (the directory name for a local directory without a `name`). It prefixes every id the plugin creates: commands (`<id>.<command>`), panel keys (`<id>:<tab>`), stored
   keys (`plugin.<id>.<key>`), and the ids of the [contracts and Ipcs](#contracts-and-tokens) it provides.
 - `os` limits the plugin to some operating systems. Omit it to run on every OS. A plugin whose `os` leaves out this
-  system does not run, and **Settings > Plugins** keeps its row with "Not available on this system."
+  system does not run, and **Settings > Extensions > Plugins** keeps its row with "Not available on this system."
 - `stores` declares [stored state](#stored-state) for windows. Read it as `ctx.stores.<key>`.
 - `i18n` holds copy by locale. Write every locale inline; English fills every key a locale lacks. Read it with
   `ctx.t(key, params)` and `ctx.plural(key, count)`. In a window, `ctx.t` also reads the app's shared keys, such as `common.*`. In `main`, a missing key returns the key.
@@ -672,6 +678,31 @@ ctx.add(
 - `enabled: false` takes the command out of the palette and turns its keybind off. It is reactive.
 - `scope` is a CSS selector that keyboard focus must be inside for the binding to apply. With `editable`, the binding
   also fires while a text field has focus.
+- To run a command from your own code, use `ctx.commands.run`; see [Run commands](#run-commands).
+
+From a keybind, `run` can return `false` to decline the key. The event then goes on to its target, as if the command
+had no keybind. This command continues the session when the user presses Enter in an empty prompt, and leaves every
+other Enter to the prompt:
+
+```ts
+ctx.add(Command, () => ({
+  id: "continue",
+  title: ctx.t("command.continue"),
+  bind: "enter",
+  editable: true,
+  hidden: true,
+  run: () => {
+    const composer = ctx.screen.current()?.composer
+    const session = ctx.sessions.current()
+
+    if (!composer?.focused() || composer.text().trim() || !session) return false
+    void session.server.client.session.prompt({ sessionID: session.id, text: ctx.t("continue") })
+  },
+}))
+```
+
+- Return `false` synchronously; a promise handles the key.
+- `false` from the palette or a slash command does nothing more.
 
 #### Reference
 
@@ -691,7 +722,7 @@ interface Command {
   enabled?: boolean
   scope?: string
   editable?: true
-  run(input?: string): void | Promise<void>
+  run(input?: string): void | false | Promise<void>
 }
 ```
 
@@ -1347,9 +1378,14 @@ interface Context {
   servers: Servers
   storage: Storage
   dialogs: Dialogs
+  toast: Toasts
+  attention: Attention
+  tabs: Tabs
   keybinds: Keybinds
+  commands: Commands
   links: Links
   embeds: Embeds
+  ui: Ui
   system: System
   desktop: Desktop | undefined
   locale: Locale
@@ -1457,7 +1493,8 @@ if (session && file) void file.sync("README.md")
 - `background` lists the shell commands and subagents the session moved to the background.
 - `ctx.sessions.list()` returns the sessions of the open shell tabs.
 - The screen's `file` reads the workspace's files, and `comment` holds the line comments of the next prompt.
-  `composer` attaches parts to it; see [the next section](#attach-to-the-composer).
+  `composer` is the next prompt: its text, attached parts, and model; see
+  [Attach to the composer](#attach-to-the-composer).
 - `file.sync(path)` loads a file and asks the server to watch it for changes. Call `file.unwatch(path)` when the file's
   tab closes.
 
@@ -1598,14 +1635,6 @@ if (composer?.quotable()) {
 #### Reference
 
 ```ts
-interface Composer {
-  attach(part: ComposerFile | ComposerNote | ComposerQuote): void
-  quotable(): boolean
-  focus(commentID?: string): void
-  update(id: string, patch: { comment?: string; preview?: string }): void
-  detach(id: string): void
-}
-
 interface ComposerFile {
   type: "file"
   path: string
@@ -1634,6 +1663,89 @@ interface ComposerQuote {
   text: string
   comment?: string
   source: { label: string; icon: IconName; subject: string }
+}
+```
+
+### Read and write the prompt
+
+Read what the user typed with `text()`, and whether they are typing with `focused()`:
+
+```ts
+const composer = ctx.screen.current()?.composer
+const empty = !composer?.text().trim()
+```
+
+- `text()` is the prompt as plain text: a mention reads as its `@` text, and attachments and attached parts are left
+  out. In shell mode, it is the shell command. It is `""` until the session's draft loads, and in a subagent's session,
+  which has no composer. It is reactive.
+- `focused()` is `true` while keyboard focus is in the prompt. It is not reactive, so read it where you act, such as in
+  a command's `run`.
+
+`insert(text)` types text into the prompt for the user to review and send. Nothing on the composer sends the prompt.
+
+```ts
+const composer = ctx.screen.current()?.composer
+
+composer?.insert(`Explain ${path}`)
+composer?.focus()
+```
+
+- `insert` adds the text at the cursor the user last left in the prompt, else at the end, and moves the cursor after
+  it. It does not replace selected text.
+- The text is not parsed: `@path` stays text, not a mention.
+- `setText(text)` replaces the prompt's text, mentions included. Attachments and attached parts stay. `setText("")`
+  clears the text.
+- Both leave keyboard focus where it is. Call `focus()` to move it to the prompt.
+- A write made before the session's stored draft loads (`insert`, `setText`, `attach`, `update`, or `detach`) waits for
+  it. It then applies to the session that was routed when you called it, in call order. It never replaces the stored
+  draft.
+- In a subagent's session, which has no composer, the writes do nothing.
+
+### Choose the model
+
+`model()` is the model the next prompt is sent with, and `setModel` selects one as the model picker does:
+
+```ts
+const composer = ctx.screen.current()?.composer
+
+if (composer && !composer.setModel({ providerID: "anthropic", modelID: "claude-sonnet-4-5", variant: "high" })) {
+  ctx.toast.show({ variant: "error", title: ctx.t("model.unavailable") })
+}
+```
+
+- `model()` is the user's choice for the routed session, else the agent's default, else the app's default. It is
+  `undefined` while the model catalog loads, when no connected provider offers the model, and in a subagent's session.
+  It is reactive.
+- `setModel` makes the model the session's choice and its first recent model. Without `variant`, the model keeps the
+  variant the picker would show for it.
+- `setVariant(variant)` selects a variant of the current model. `undefined` selects the model's default variant.
+- `setModel` returns `false`, and changes nothing, while the catalog loads, when no connected provider offers the
+  model, or when the model has no such variant.
+- `setVariant` returns `false`, and changes nothing, when there is no current model or the model has no such variant.
+- Both return `false` in a subagent's session.
+
+#### Reference
+
+```ts
+interface Composer {
+  text(): string
+  insert(text: string): void
+  setText(text: string): void
+  model(): ComposerModel | undefined
+  setModel(model: ComposerModel): boolean
+  setVariant(variant: string | undefined): boolean
+  attach(part: ComposerFile | ComposerNote | ComposerQuote): void
+  quotable(): boolean
+  focus(commentID?: string): void
+  update(id: string, patch: { comment?: string; preview?: string }): void
+  detach(id: string): void
+  focused(): boolean
+}
+
+interface ComposerModel {
+  providerID: string
+  modelID: string
+  variant?: string
 }
 ```
 
@@ -1696,17 +1808,474 @@ const handle = ctx.dialogs.open((dialog) => <ConfirmDialog onDone={dialog.close}
 
 - `replace: true` closes every open dialog first, including the host's and other plugins' dialogs.
 - `ctx.dialogs.active()` is `true` while any dialog is open.
+- Render the content in `ctx.ui.Dialog` for the app's dialog frame; see [App components](#app-components).
+
+### Ask the user
+
+`confirm`, `alert`, `prompt`, and `select` ask in the app's own dialogs, so your plugin needs no dialog UI of its own.
+Each returns a promise of the answer.
+
+```ts
+const ok = await ctx.dialogs.confirm({ title: ctx.t("end.title"), confirm: ctx.t("end"), danger: true })
+```
+
+- `confirm` resolves `true` only when the user confirms. `danger` styles the confirm button as destructive and starts
+  focus on Cancel.
+- Each dialog opens as `open` does, and closes with the owner that asked, else with your plugin.
+- Cancelling, pressing Escape, clicking outside, a replacing dialog, or the owner ending resolves `false` from `confirm`
+  and `undefined` from `prompt` and `select`.
+
+`alert` tells the user something they must acknowledge, with one button. It resolves once the dialog closes, however it
+closes:
+
+```ts
+await ctx.dialogs.alert({ title: ctx.t("export.done"), description: path })
+```
+
+`prompt` asks for one line of text. Its initial `value` is selected, so typing replaces it. It never resolves an empty
+string: submitting does nothing while the field is empty. `secret: true` hides what the user types, for a password or a
+token:
+
+```ts
+const token = await ctx.dialogs.prompt({ title: ctx.t("token.title"), placeholder: "ghp_…", secret: true })
+```
+
+`select` lists options in a searchable list, like the command palette, and resolves the picked option's `value`:
+
+```ts
+const url = await ctx.dialogs.select({
+  title: ctx.t("links.title"),
+  options: links.map((link) => ({ title: link.title, description: link.url, value: link.url, group: link.host })),
+})
+
+if (url) ctx.system.openExternal(url)
+```
+
+- Search matches each option's `title` and `description`.
+- Options with the same `group` list together under that heading.
+- `current` is the value of the option to highlight first.
 
 #### Reference
 
 ```ts
 interface Dialogs {
   open(render: (dialog: DialogHandle) => JSX.Element, options?: { replace?: boolean }): DialogHandle
+  confirm(options: ConfirmOptions): Promise<boolean>
+  alert(options: AlertOptions): Promise<void>
+  prompt(options: PromptOptions): Promise<string | undefined>
+  select<T>(options: SelectOptions<T>): Promise<T | undefined>
   active(): boolean
 }
 
 interface DialogHandle {
   close(): void
+}
+
+interface ConfirmOptions {
+  title: string
+  description?: string
+  confirm?: string
+  cancel?: string
+  danger?: boolean
+}
+
+interface AlertOptions {
+  title: string
+  description?: string
+  ok?: string
+}
+
+interface PromptOptions {
+  title: string
+  description?: string
+  placeholder?: string
+  value?: string
+  secret?: boolean
+  submit?: string
+}
+
+interface SelectOptions<T> {
+  title: string
+  placeholder?: string
+  options: { title: string; value: T; description?: string; group?: string }[]
+  current?: T
+}
+```
+
+### App components
+
+A plugin bundle cannot import `@opencode/ui`, so `ctx.ui` gives it the app's own components. They render in the
+user's theme, fonts, and language, so your plugin's UI looks and behaves like the app's.
+
+```tsx
+import { Show } from "solid-js"
+import { createLatest, Panel } from "@opencode/plugin/gui"
+
+const ui = ctx.ui
+const summary = createLatest(
+  () => ctx.sessions.current()?.directory,
+  (directory, signal) => fetchSummary(directory, signal),
+)
+
+ctx.add(Panel, {
+  id: "summary",
+  region: "side",
+  list: () => [summaryTab],
+  render: () => (
+    <div>
+      <ui.Tooltip value={ctx.t("copy")}>
+        <ui.IconButton icon="copy" label={ctx.t("copy")} onClick={() => void ctx.system.copy(summary.latest ?? "")} />
+      </ui.Tooltip>
+      <Show when={summary.latest} fallback={<ui.Loader size="large" />}>
+        {(text) => <ui.Markdown text={text()} />}
+      </Show>
+    </div>
+  ),
+})
+```
+
+- `Icon`, `Button`, and `IconButton` take any `IconName`, as every `icon` field of the SDK does. An `IconButton`'s
+  `label` is its accessible name; wrap it in `Tooltip` to show it on hover.
+- `busy` on a button replaces its icon with the loading indicator and disables it until it is `false` again.
+- Use `Loader` for every loading state that is not the AI working, such as a pane, a search, or a connection that
+  loads.
+- `Menu` opens a list of `items`: actions, `{ type: "separator" }`, and `{ type: "group", label, items }`.
+- `Switch` and `TextInput` keep no state: pass the value from `onChange` or `onInput` back to `checked` or `value`.
+- `Keybind` shows keys as chips, such as `ctx.keybinds.keybind(command)`.
+- `Markdown` renders as the timeline renders a message, and `Code` shows a highlighted, read-only code block. Both fill
+  in shortly after they mount.
+
+`Dialog` is the app's dialog frame: a title, content, and buttons. Render it from `ctx.dialogs.open`; elsewhere it
+renders nothing useful.
+
+```tsx
+const ui = ctx.ui
+
+ctx.dialogs.open((dialog) => (
+  <ui.Dialog
+    title={ctx.t("rename.title")}
+    footer={
+      <ui.Button variant="contrast" onClick={dialog.close}>
+        {ctx.t("done")}
+      </ui.Button>
+    }
+  >
+    <ui.TextInput label={ctx.t("rename.label")} value={name()} onInput={setName} onSubmit={dialog.close} autofocus />
+  </ui.Dialog>
+))
+```
+
+- `size` is `"fit"` by default: 480px wide and as tall as its content. `"normal"`, `"large"`, and `"x-large"` are fixed
+  sizes.
+- Escape and a click outside close the dialog. `closable: false` hides the header's close button.
+
+#### Reference
+
+```ts
+interface Ui {
+  Icon(props: UiIconProps): JSX.Element
+  Button(props: UiButtonProps): JSX.Element
+  IconButton(props: UiIconButtonProps): JSX.Element
+  Tooltip(props: UiTooltipProps): JSX.Element
+  Menu(props: UiMenuProps): JSX.Element
+  Loader(props: UiLoaderProps): JSX.Element
+  Dialog(props: UiDialogProps): JSX.Element
+  Switch(props: UiSwitchProps): JSX.Element
+  TextInput(props: UiTextInputProps): JSX.Element
+  Keybind(props: UiKeybindProps): JSX.Element
+  Markdown(props: UiMarkdownProps): JSX.Element
+  Code(props: UiCodeProps): JSX.Element
+}
+
+interface UiIconProps {
+  name: IconName
+  size?: "small" | "normal" | "large"
+  class?: string
+}
+
+interface UiButtonProps {
+  children: JSX.Element
+  onClick?: (event: MouseEvent) => void
+  variant?: "neutral" | "contrast" | "ghost" | "ghost-muted" | "danger"
+  size?: "small" | "normal" | "large"
+  icon?: IconName
+  disabled?: boolean
+  busy?: boolean
+  type?: "button" | "submit"
+  autofocus?: boolean
+  class?: string
+}
+
+interface UiIconButtonProps {
+  icon: IconName
+  label: string
+  onClick?: (event: MouseEvent) => void
+  variant?: "neutral" | "ghost" | "ghost-muted"
+  size?: "small" | "normal" | "large"
+  disabled?: boolean
+  pressed?: boolean
+  busy?: boolean
+  class?: string
+}
+
+interface UiTooltipProps {
+  value: JSX.Element
+  keys?: string[]
+  placement?: "top" | "bottom" | "left" | "right"
+  children: JSX.Element
+}
+
+interface UiMenuProps {
+  label: string
+  items: UiMenuEntry[]
+  trigger?: "icon" | "button"
+  icon?: IconName
+  placement?: "bottom-start" | "bottom-end" | "top-start" | "top-end"
+  disabled?: boolean
+}
+
+type UiMenuEntry = UiMenuItem | UiMenuSeparator | UiMenuGroup
+
+interface UiMenuItem {
+  type?: "item"
+  label: string
+  icon?: IconName
+  keys?: string[]
+  disabled?: boolean
+  onSelect(): void
+}
+
+interface UiMenuSeparator {
+  type: "separator"
+}
+
+interface UiMenuGroup {
+  type: "group"
+  label: string
+  items: UiMenuItem[]
+}
+
+interface UiLoaderProps {
+  size?: "small" | "normal" | "large"
+  class?: string
+}
+
+interface UiDialogProps {
+  title: string
+  description?: string
+  children?: JSX.Element
+  footer?: JSX.Element
+  size?: "fit" | "normal" | "large" | "x-large"
+  closable?: boolean
+}
+
+interface UiSwitchProps {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  label: string
+  hideLabel?: boolean
+  description?: string
+  disabled?: boolean
+}
+
+interface UiTextInputProps {
+  value: string
+  onInput: (value: string) => void
+  label: string
+  placeholder?: string
+  onSubmit?: (value: string) => void
+  type?: "text" | "password" | "search" | "url"
+  size?: "normal" | "large"
+  disabled?: boolean
+  invalid?: boolean
+  autofocus?: boolean
+  class?: string
+}
+
+interface UiKeybindProps {
+  keys: string[]
+  class?: string
+}
+
+interface UiMarkdownProps {
+  text: string
+  class?: string
+}
+
+interface UiCodeProps {
+  content: string
+  language?: string
+  class?: string
+}
+```
+
+### Toasts
+
+`ctx.toast.show` shows a short message in the corner of the window and returns a handle whose `dismiss()` closes it.
+
+```ts
+ctx.toast.show({ variant: "success", title: ctx.t("invite.copied") })
+```
+
+- `variant` is `"default"`, `"success"`, `"error"`, or `"loading"`. A `success` toast shows a check icon unless you set
+  `icon`.
+- `duration` is how long the toast shows, in milliseconds. It defaults to 5 seconds.
+- `persistent: true` keeps the toast until the user or `dismiss()` closes it, and ignores `duration`.
+- A toast equal to one still showing replaces it instead of stacking a copy.
+- Your plugin's toasts close when it stops, so no button outlives the code it runs. A toast does not close with the
+  component or `createKeyed` run that showed it.
+
+Show a `loading` toast while work runs, and dismiss it when the work ends:
+
+```ts
+const saving = ctx.toast.show({ variant: "loading", title: ctx.t("saving"), persistent: true })
+await save()
+saving.dismiss()
+```
+
+`actions` adds buttons. A click runs the action and closes the toast:
+
+```ts
+ctx.toast.show({
+  variant: "error",
+  title: ctx.t("sync.failed"),
+  actions: [{ label: ctx.t("retry"), run: () => void sync() }],
+})
+```
+
+#### Reference
+
+```ts
+interface Toasts {
+  show(options: ToastOptions): ToastHandle
+}
+
+interface ToastHandle {
+  dismiss(): void
+}
+
+interface ToastOptions {
+  title: string
+  description?: string
+  variant?: "default" | "success" | "error" | "loading"
+  icon?: IconName
+  duration?: number
+  persistent?: boolean
+  actions?: ToastAction[]
+}
+
+interface ToastAction {
+  label: string
+  run(): void
+}
+```
+
+### Notifications
+
+`ctx.attention.notify` gets the user's attention while they look elsewhere: a system notification and a sound, with
+the same rules as the app's own notifications.
+
+```ts
+const session = ctx.sessions.current()
+
+if (session) {
+  void ctx.attention.notify({
+    title: ctx.t("tests.done"),
+    message: ctx.t("tests.summary", { failed: 0 }),
+    session: { server: session.server.id, id: session.id },
+    id: run.id,
+  })
+}
+```
+
+- The system notification shows only while no app window has focus. The sound plays either way.
+- Both follow **Settings > Notifications**. `variant: "default"` follows the **Agent** rows, and `variant: "error"` the
+  **Errors** rows. Desktop notifications for both are off by default; their sounds are on.
+- `sound: false` never plays a sound.
+- Clicking the notification brings the app forward and opens `session`, when you give one.
+- Each app window runs its own copy of your plugin. Pass an `id` of the event, such as a run's id, so only the first
+  window to send it notifies and plays the sound. Without `id`, every call notifies.
+- Before the app interface mounts, `notify` waits for it.
+
+`notify` never rejects. It resolves what it did: `notification` is `true` when the app asked the system to show the
+notification, and `sound` is `true` when the sound started.
+
+```ts
+const result = await ctx.attention.notify({ title: ctx.t("deploy.failed"), variant: "error" })
+
+if (!result.notification) ctx.toast.show({ variant: "error", title: ctx.t("deploy.failed") })
+```
+
+- `notification` is `false` when the user turned it off, an app window has focus, or another window already sent
+  `id`. The system can still hide a notification the app asked it to show, for example when the user denied a
+  browser's permission.
+
+#### Reference
+
+```ts
+interface Attention {
+  notify(options: NotifyOptions): Promise<NotifyResult>
+}
+
+interface NotifyOptions {
+  title: string
+  message?: string
+  variant?: "default" | "error"
+  session?: { server: string; id: string }
+  sound?: boolean
+  id?: string
+}
+
+interface NotifyResult {
+  notification: boolean
+  sound: boolean
+}
+```
+
+### Tabs
+
+`ctx.tabs` reads and changes the shell's tab strip: the sessions and drafts open as tabs. This moves a session's tab to
+the front when its run finishes:
+
+```ts
+import { onCleanup } from "solid-js"
+import { createKeyed } from "@opencode/plugin/gui"
+
+createKeyed(
+  () => ctx.servers.get("sidecar")?.data,
+  (data) =>
+    onCleanup(
+      data.on("session.execution.succeeded", (event) => {
+        const tab = ctx.tabs.list().find((item) => item.session?.id === event.data.sessionID)
+
+        if (tab) ctx.tabs.move(tab.key, 0)
+      }),
+    ),
+)
+```
+
+- `list()` returns the open tabs in strip order. It is reactive. A tab's `session` is `undefined` for a draft, and
+  `active` is `true` for the tab on screen.
+- `open({ server, id }, { focus? })` opens a session as a tab at the end of the strip, in the background unless `focus`
+  is `true`. A session that is already open keeps its tab, as does a subagent that its parent's tab shows.
+- `focus(key)` shows a tab, `move(key, index)` moves it, and `close(key)` closes it as the user does.
+- A key that no open tab has does nothing. Writes made before the app interface mounts wait for it.
+
+#### Reference
+
+```ts
+interface Tabs {
+  list(): ShellTab[]
+  open(session: { server: string; id: string }, options?: { focus?: boolean }): void
+  focus(key: string): void
+  move(key: string, index: number): void
+  close(key: string): void
+}
+
+interface ShellTab {
+  key: string
+  session: SessionRef | undefined
+  active: boolean
 }
 ```
 
@@ -1735,6 +2304,30 @@ interface Keybinds {
 }
 ```
 
+### Run commands
+
+`ctx.commands.run(id)` runs a command as choosing it in the command palette does. It returns `false` when the command
+cannot run:
+
+```ts
+if (!ctx.commands.run("terminal.toggle")) ctx.toast.show({ title: ctx.t("terminal.unavailable") })
+```
+
+- `id` is a published plugin command, `<plugin id>.<command id>`, of any plugin, or one of the app's own commands,
+  such as `command.palette`.
+- The app's command ids are not a stable API and can change between releases.
+- `run` returns `false` when no enabled command has the id. A listed but disabled command does not run.
+- Before the app interface mounts, no command is registered, so `run` returns `false`.
+- `run` does not wait for a command's async work.
+
+#### Reference
+
+```ts
+interface Commands {
+  run(id: string): boolean
+}
+```
+
 ### System and environment
 
 `ctx.system` works on every platform. `ctx.desktop` adds desktop-only abilities and is `undefined` on the web.
@@ -1760,6 +2353,30 @@ const show = async (path: string) => {
 - `ctx.workspaces.on("remove", handler)` runs when the user removes a workspace directory from a server, so you can
   clean up stores scoped to it.
 
+`desktop.pick(options)` asks the user for files or folders with the system's open dialog, and resolves their absolute
+paths:
+
+```ts
+const [folder] = (await ctx.desktop?.pick({ directory: true, title: ctx.t("pick.folder") })) ?? []
+
+if (folder) await ctx.client.rpc(Acme).index({ directory: folder })
+```
+
+- `directory: true` picks folders instead of files, and `multiple: true` lets the user pick more than one.
+- `extensions` limits the files offered, without the dot, such as `["json"]`. Folders ignore it.
+- `title` is the dialog's title. Not every system shows it.
+- The paths are empty when the user cancels. `pick` rejects when the dialog cannot open.
+- `pick` is desktop only: a browser never tells the page where a picked file is.
+
+`ctx.appearance.mode()` is the color scheme the interface shows, `"light"` or `"dark"`. It is reactive:
+
+```ts
+const background = () => (ctx.appearance.mode() === "dark" ? "#000" : "#fff")
+```
+
+- It follows the user's choice in **Settings > Appearance**, with **System** resolved to the system's current scheme.
+- Before the app interface mounts, it is the system's scheme.
+
 #### Reference
 
 ```ts
@@ -1775,6 +2392,14 @@ interface Desktop {
   launch(path: string, app?: string): Promise<void>
   reveal(path: string): Promise<boolean>
   installed(app: string): Promise<boolean>
+  pick(options?: PickOptions): Promise<string[]>
+}
+
+interface PickOptions {
+  directory?: boolean
+  multiple?: boolean
+  title?: string
+  extensions?: string[]
 }
 
 interface Links {
@@ -1789,6 +2414,7 @@ interface Locale {
 
 interface Appearance {
   font(kind: "mono"): string
+  mode(): "light" | "dark"
 }
 
 interface Router {

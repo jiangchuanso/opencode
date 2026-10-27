@@ -16,6 +16,8 @@ import type {
 } from "./core.js"
 import type {
   Appearance,
+  Attention,
+  Commands,
   Desktop,
   Dialogs,
   Embeds,
@@ -30,6 +32,9 @@ import type {
   Sessions,
   Storage,
   System,
+  Tabs,
+  Toasts,
+  Ui,
   Workspaces,
 } from "./host-apis.js"
 
@@ -153,6 +158,44 @@ export interface Context extends BaseContext {
    */
   readonly dialogs: Dialogs
   /**
+   * Short messages in a corner of the window. A plugin's toasts close when it goes away.
+   *
+   * @example
+   * ```ts
+   * const saving = ctx.toast.show({ title: ctx.t("saving"), variant: "loading", persistent: true })
+   * await save()
+   * saving.dismiss()
+   * ```
+   */
+  readonly toast: Toasts
+  /**
+   * The shell's tab strip: open, show, move and close session tabs.
+   *
+   * @example
+   * ```ts
+   * const first = (key: string) => ctx.tabs.move(key, 0)
+   * ```
+   */
+  readonly tabs: Tabs
+  /**
+   * System notifications and sounds that follow the user's notification settings, for when they look elsewhere.
+   *
+   * @example
+   * ```ts
+   * void ctx.attention.notify({ title: ctx.t("tests.done"), session: { server: session.server.id, id: session.id } })
+   * ```
+   */
+  readonly attention: Attention
+  /**
+   * Runs published plugin commands and the app's own, as the command palette does.
+   *
+   * @example
+   * ```ts
+   * if (!ctx.commands.run("terminal.toggle")) ctx.toast.show({ title: ctx.t("terminal.unavailable") })
+   * ```
+   */
+  readonly commands: Commands
+  /**
    * Routes local links to the plugins that handle them.
    *
    * @example
@@ -170,6 +213,16 @@ export interface Context extends BaseContext {
    * ```
    */
   readonly embeds: Embeds
+  /**
+   * The app's own components: icons, buttons, tooltips, menus, the loading indicator, the dialog frame, switches,
+   * text fields, keybind chips, Markdown and highlighted code.
+   *
+   * @example
+   * ```tsx
+   * <ctx.ui.Button icon="check" onClick={apply}>{ctx.t("apply")}</ctx.ui.Button>
+   * ```
+   */
+  readonly ui: Ui
   /**
    * The running app: its version, release channel and platform, as `ctx.app` in server and TUI plugins.
    *

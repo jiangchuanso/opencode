@@ -1,19 +1,26 @@
 import { createResource, onCleanup, type JSX } from "solid-js"
 import type { Entry } from "@opencode/plugin/gui/host"
 import { pluralCategory } from "@opencode/ui/context/i18n"
+import { useTheme } from "@opencode/ui/theme/context"
+import { toaster } from "@opencode/ui/toast"
 import { useLanguage } from "@/runtime/i18n/language"
+import { ui } from "@/runtime/plugin/ui"
+import { showToast } from "@/shell/notifications/toast"
 import type { BuiltinLocale } from "../../plugin/src/gui/builtin"
 import { PluginContext } from "../../plugin/src/gui/internal"
 import {
   type App,
   type Appearance,
+  type Attention,
   type Catalog,
+  type Commands,
   type Context,
   type Keybinds,
   type Messages,
   type Params,
   type Router,
   type Servers,
+  type Toasts,
   type Workspaces,
 } from "../../plugin/src/gui/index"
 
@@ -81,13 +88,16 @@ function createStoryContext(id: string, definition: Entry) {
     },
   }
   // The HostApis a story has no stand-in for fail when read.
-  ;["layout", "sessions", "screen", "storage", "system", "dialogs", "links", "embeds"].forEach((name) =>
+  ;["layout", "sessions", "screen", "storage", "system", "dialogs", "tabs", "links", "embeds"].forEach((name) =>
     Object.defineProperty(context, name, { get: unavailable(`ctx.${name}`) }),
   )
   return context as unknown as Context
 }
 
-/** The host's app, locale, appearance, router, keybind, server and workspace APIs for a story, by context property. */
+/**
+ * The host's app, locale, appearance, router, keybind, server, workspace, toast, attention, command and UI APIs for a
+ * story, by context property.
+ */
 export function createStoryHostApis(platform: App["platform"]) {
   const language = useLanguage()
   const app: App = { name: "opencode", version: "", channel: "dev", platform, packaged: false }
@@ -97,11 +107,24 @@ export function createStoryHostApis(platform: App["platform"]) {
     direction: language.direction,
     setDirection: language.setDirection,
   }
-  const appearance: Appearance = { font: () => "var(--font-family-mono)" }
+  const theme = useTheme()
+  const appearance: Appearance = { font: () => "var(--font-family-mono)", mode: theme.mode }
   const router: Router = { routing: () => false, path: () => "/" }
   const keybinds: Keybinds = { keybind: () => [], keys: () => [], matches: () => false }
   const servers: Servers = { list: () => [], get: () => undefined }
   const workspaces: Workspaces = { on: () => () => {} }
+  // Stories show real toasts; they have no command registry and send no system notifications.
+  const toast: Toasts = {
+    show: (options) => {
+      const id = showToast({
+        ...options,
+        actions: options.actions?.map((action) => ({ label: action.label, onClick: action.run })),
+      })
+      return { dismiss: () => void toaster.dismiss(id) }
+    },
+  }
+  const attention: Attention = { notify: async () => ({ notification: false, sound: false }) }
+  const commands: Commands = { run: () => false }
   return {
     app: () => app,
     locale: () => locale,
@@ -110,6 +133,11 @@ export function createStoryHostApis(platform: App["platform"]) {
     keybinds: () => keybinds,
     servers: () => servers,
     workspaces: () => workspaces,
+    toast: () => toast,
+    attention: () => attention,
+    commands: () => commands,
+    // The app's own components, as the host provides them.
+    ui: () => ui,
   }
 }
 

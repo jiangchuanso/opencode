@@ -22,7 +22,10 @@ import type {
   SessionScreen,
 } from "@opencode/plugin/gui"
 import { useComments } from "@/composer/comments"
+import { createComposerEditorActions } from "@/composer/editor/actions"
 import { useComposerState } from "@/composer/persistence"
+import type { ComposerStateValue } from "@/composer/state"
+import { useLocal } from "@/providers/models/selection"
 import { useServer } from "@/runtime/server/current"
 import { ServerConnection, useServers } from "@/runtime/server/registry"
 import { sessionInWorkspace, sessionProject, type SessionModel } from "@/session/model"
@@ -44,6 +47,7 @@ export function createMountedSession(session: SessionModel) {
   const file = useFile()
   const comments = useComments()
   const composer = useComposerState()
+  const local = useLocal()
   const server = useServer()
   const servers = useServers()
   const location = useWorkspaceLocation()
@@ -51,7 +55,7 @@ export function createMountedSession(session: SessionModel) {
   // The composer region owns background tasks and is created after the view.
   const [background, setBackground] = createSignal<Accessor<readonly BackgroundTask[]>>()
   // The screen's composer view, created after this object, says whether it takes quotes and focuses its prompt.
-  const [prompt, setPrompt] = createSignal<{ quotable: Accessor<boolean>; focus: () => void }>()
+  const [prompt, setPrompt] = createSignal<{ quotable: Accessor<boolean>; focus: () => void; focused: () => boolean }>()
 
   const serverRef: ServerRef = {
     get id() {
@@ -150,8 +154,80 @@ export function createMountedSession(session: SessionModel) {
     active: { current: comments.active, set: (value) => void comments.setActive(value) },
   }
 
+  // A write before the routed session's draft loads would replace the stored draft, so it waits for the load and then
+  // applies to that session. Later writes queue behind it to keep call order.
+  let writes: Promise<void> | undefined
+
+  const write = (apply: (draft: ComposerStateValue) => void) => {
+    const target = composer.capture()
+
+    if (!writes && composer.ready()) return apply(target)
+    const loaded = composer.ready() ? undefined : composer.ready.promise
+
+    const next = Promise.resolve(writes)
+      .then(() => loaded)
+      .catch(() => undefined)
+      .then(() => apply(target))
+
+    writes = next
+
+    const settle = () => {
+      if (writes === next) writes = undefined
+    }
+
+    void next.then(settle, settle)
+  }
+
+  // A subagent's session has no composer, so its draft is never sent.
+  const edit = (apply: (draft: ReturnType<typeof createComposerEditorActions>) => void) => {
+    if (!session.data.isChild()) write((target) => apply(createComposerEditorActions(target.store)))
+  }
+
   const composerRef: Composer = {
-    attach: (part) => composer.context.add(part),
+    text: () =>
+      session.data.isChild()
+        ? ""
+        : composer
+            .capture()
+            .current()
+            .map((part) => ("content" in part ? part.content : ""))
+            .join(""),
+    insert(text) {
+      const value = text.replace(/\r\n?/g, "\n")
+
+      if (value) edit((draft) => draft.addText(value))
+    },
+    setText: (value) => edit((draft) => draft.setText(value.replace(/\r\n?/g, "\n"))),
+    model() {
+      const item = session.data.isChild() ? undefined : local.model.current()
+
+      if (!item) return
+
+      return { providerID: item.provider.id, modelID: item.id, variant: local.model.variant.current() }
+    },
+    setModel(model) {
+      const item = session.data.isChild()
+        ? undefined
+        : local.model.list().find((entry) => entry.provider.id === model.providerID && entry.id === model.modelID)
+
+      if (!item || (model.variant !== undefined && !Object.keys(item.variants ?? {}).includes(model.variant)))
+        return false
+      // As the model picker selects: the model first, then a variant chosen with it.
+      local.model.set({ providerID: model.providerID, modelID: model.modelID }, { recent: true })
+
+      if (model.variant !== undefined) local.model.variant.set(model.variant)
+
+      return true
+    },
+    setVariant(variant) {
+      if (session.data.isChild() || !local.model.current()) return false
+
+      if (variant !== undefined && !local.model.variant.list().includes(variant)) return false
+      local.model.variant.set(variant)
+
+      return true
+    },
+    attach: (part) => write((draft) => draft.context.add(part)),
     quotable: () => !!prompt()?.quotable(),
     focus(commentID) {
       if (commentID === undefined) return prompt()?.focus()
@@ -160,8 +236,9 @@ export function createMountedSession(session: SessionModel) {
 
       if (item) composer.capture().quoteComment.set(item.key)
     },
-    update: (id, patch) => composer.context.updateComment(id, patch),
-    detach: (id) => composer.context.removeComment(id),
+    update: (id, patch) => write((draft) => draft.context.updateComment(id, patch)),
+    detach: (id) => write((draft) => draft.context.removeComment(id)),
+    focused: () => !!prompt()?.focused(),
   }
 
   // Each object's memos live in its own root, which ends when the next object replaces it: a kept object stops
@@ -270,6 +347,7 @@ export function createMountedSession(session: SessionModel) {
     screen,
     view: mounted,
     bindBackground: (tasks: Accessor<readonly BackgroundTask[]>) => setBackground(() => tasks),
-    bindPrompt: (value: { quotable: Accessor<boolean>; focus: () => void }) => setPrompt(() => value),
+    bindPrompt: (value: { quotable: Accessor<boolean>; focus: () => void; focused: () => boolean }) =>
+      setPrompt(() => value),
   }
 }
