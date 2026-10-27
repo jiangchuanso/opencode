@@ -579,6 +579,114 @@
         "summary": "List plugins"
       }
     },
+    "/api/plugin/gui": {
+      "get": {
+        "tags": ["plugin"],
+        "operationId": "plugin.gui",
+        "parameters": [
+          {
+            "name": "location",
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "directory": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "required": false,
+            "style": "deepObject",
+            "explode": true
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Plugin.ID"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "location": {
+                      "$ref": "#/components/schemas/Location.PublicRef"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Plugin.GuiBundle"
+                    }
+                  },
+                  "required": ["location", "data"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "InvalidRequestError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidRequestErrorEncoded"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "UnauthorizedError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnauthorizedErrorEncoded"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PluginNotFoundError | LocationNotFoundError",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PluginNotFoundErrorEncoded"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LocationNotFoundErrorEncoded"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "description": "Read an active plugin's prebuilt CommonJS `./gui-experimental` bundle. Desktop app windows run its default export; the desktop app's main process runs its `main` export. Fails with not found when no active plugin has the id or the plugin exports no `./gui-experimental`.",
+        "summary": "Read plugin GUI bundle"
+      }
+    },
     "/api/plugin/check": {
       "post": {
         "tags": ["plugin"],
@@ -17370,9 +17478,6 @@
           "name": {
             "type": "string"
           },
-          "configured": {
-            "type": "boolean"
-          },
           "metadata": {
             "type": "object"
           },
@@ -18732,15 +18837,38 @@
           "rpc": {
             "type": "boolean",
             "enum": [true]
+          },
+          "gui": {
+            "type": "boolean",
+            "enum": [true]
           }
         },
         "additionalProperties": false
+      },
+      "Plugin.GuiBundle": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "options": {
+            "type": "object"
+          }
+        },
+        "required": ["code", "revision", "options"],
+        "additionalProperties": false
+      },
+      "Plugin.ID": {
+        "type": "string"
       },
       "Plugin.Info": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "$ref": "#/components/schemas/Plugin.ID"
           },
           "source": {
             "$ref": "#/components/schemas/Plugin.Source"
@@ -18851,6 +18979,23 @@
             "additionalProperties": false
           }
         ]
+      },
+      "PluginNotFoundErrorEncoded": {
+        "type": "object",
+        "properties": {
+          "_tag": {
+            "type": "string",
+            "enum": ["PluginNotFoundError"]
+          },
+          "pluginID": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["_tag", "pluginID", "message"],
+        "additionalProperties": false
       },
       "Project": {
         "type": "object",

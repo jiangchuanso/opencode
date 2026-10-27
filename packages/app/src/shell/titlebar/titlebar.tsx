@@ -33,7 +33,7 @@ import { SessionProgressIndicatorV2 } from "@opencode/session-ui/v2/session-prog
 import { RecentlyClosedTabsMenu } from "./recently-closed-tabs-menu"
 import { useSettingsDialog } from "@/settings/command"
 import { rootSession } from "@/shell/routes/session"
-import { TitlebarItems, useTitlebarItems } from "@/runtime/extension/titlebar-items"
+import { TitlebarItems, useTitlebarItems } from "@/runtime/plugin/titlebar-items"
 
 export const newTabCommand = { id: "tab.new", keybind: "mod+t,mod+n" }
 

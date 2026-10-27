@@ -331,7 +331,6 @@ function displayKeybindParts(kb: Keybind, t?: (key: KeyLabel) => string) {
   ])
 
   const key = kb.key.toLowerCase()
-
   const label = named.get(key)
 
   const displayKey =
@@ -440,7 +439,7 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
       )
     })
 
-    // Built-in GUI extensions republished these commands under new ids. Drop the old entries so
+    // Built-in plugins republished these commands under new ids. Drop the old entries so
     // Settings > Shortcuts lists each command once.
     createEffect(() => {
       if (!catalogReady()) return
