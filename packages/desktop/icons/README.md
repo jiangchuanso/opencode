@@ -15,5 +15,9 @@ Linux packaging reads this folder as a hicolor icon set: files named `<size>x<si
 sizes Tauri generates (32x32, 64x64, 128x128). Without 48x48 the start menu, including Kylin's UKUI menu,
 has to scale another size.
 
+Every smaller size in `icon.icns` must be a premultiplied-alpha downsample of its 1024px (`icon_512x512@2x`) image. Image2Icon's
+smaller sizes had light, unpremultiplied anti-aliased edges that render as a halo on dark backgrounds, most visibly at the 64px size
+macOS uses in System Settings lists. Regenerate them from the 1024px image and resync `dock.png` before committing a new `icon.icns`.
+
 For unpackaged Electron on macOS, `app.dock.setIcon()` should use a PNG. Keep `dock.png` in each channel folder synced with the
 extracted `icon_128x128@2x.png` from that channel's `icon.icns` so the dev Dock icon matches the packaged app inset.
