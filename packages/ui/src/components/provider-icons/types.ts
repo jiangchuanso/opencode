@@ -194,6 +194,7 @@ export const iconNames = [
   "cline-pass",
   "claudinio",
   "clarifai",
+  "claude-agent",
   "chutes",
   "cerebras",
   "bothub",

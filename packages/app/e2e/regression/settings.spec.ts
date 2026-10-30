@@ -491,11 +491,45 @@ test("project list menus rename, edit, add, and stay inside the scrollport", asy
   await settings.getByRole("tab", { name: "Projects", exact: true }).click()
   const panel = settings.getByRole("tabpanel")
   const list = panel.getByRole("list")
-  await expect(list.getByRole("listitem")).toHaveCount(4)
-  const card = list.getByRole("listitem").filter({ hasText: "rebase" })
+  await expect(list.getByRole("listitem")).toHaveCount(1)
+  await expect(list.getByRole("button", { name: "rebase", exact: true })).toBeVisible()
+  const others = panel.getByRole("button", { name: "Other projects", exact: true })
+  await expect(others).toContainText("3")
+  await expect(others).toHaveAttribute("aria-expanded", "false")
+  await others.click()
+  await expect(others).toHaveAttribute("aria-expanded", "true")
+  await expect(panel.getByRole("listitem")).toHaveCount(4)
+  await others.click()
+  const search = panel.getByRole("searchbox", { name: "Search projects" })
+  await search.fill("/projects/dinocms")
+  await expect(panel.getByRole("listitem")).toHaveCount(1)
+  await expect(panel.getByRole("button", { name: "dinocms", exact: true })).toBeVisible()
+  await expect(panel.getByRole("heading", { name: "Other projects", exact: true })).toBeVisible()
+  await search.fill("")
+  await expect(panel.getByRole("listitem")).toHaveCount(1)
+  await others.click()
+  await expect(panel.getByRole("listitem")).toHaveCount(4)
+
+  const addTrigger = panel
+    .getByRole("listitem")
+    .filter({ hasText: "dinocms" })
+    .getByRole("button", { name: "More options", exact: true })
+
+  await addTrigger.focus()
+  await addTrigger.press("Enter")
+  const menu = page.getByRole("menu")
+  await expect(menu.getByRole("menuitem")).toHaveText(["Add project", "Edit", "Rename"])
+  const addProject = menu.getByRole("menuitem", { name: "Add project", exact: true })
+  await expect(addProject).toBeFocused()
+  await addProject.press("Enter")
+  await expect(menu).toBeHidden()
+  await expect(others).toContainText("2")
+  const addedProjects = panel.getByRole("list").filter({ hasText: "rebase" })
+  await expect(addedProjects.getByRole("listitem")).toHaveCount(2)
+  await expect(addedProjects.getByRole("button", { name: "dinocms", exact: true })).toBeFocused()
+  const card = panel.getByRole("listitem").filter({ hasText: "rebase" })
   const more = card.getByRole("button", { name: "More options", exact: true })
   await more.click()
-  const menu = page.getByRole("menu")
   await expect(menu.getByRole("menuitem")).toHaveText(["Edit", "Rename", "Clear notifications"])
   await menu.getByRole("menuitem", { name: "Edit", exact: true }).click()
   await expect(panel.getByRole("heading", { name: "rebase", exact: true })).toBeVisible()
@@ -545,6 +579,8 @@ test("project list menus rename, edit, add, and stay inside the scrollport", asy
   await select.click()
   await expect(picker).toBeHidden()
   await expect(panel.getByRole("heading", { name: "added", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Home", exact: true }).click()
+  await expect(page.locator('[data-component="home-project-row"]').filter({ hasText: "dinocms" })).toBeVisible()
 })
 
 test("project settings open as a nested view that keeps its route", async ({ page }) => {
@@ -849,7 +885,13 @@ test.describe("pages open before slow data", () => {
         { name: "stripe", integrationID: "stripe-oauth", status: { status: "needs_auth", error: "Sign in required" } },
       ],
       integrations: [
-        { id: "stripe-oauth", name: "Stripe", methods: [{ id: "oauth", type: "oauth" }], connections: [] },
+        {
+          id: "stripe-oauth",
+          name: "Stripe",
+          methods: [{ id: "oauth", type: "oauth" }],
+          connections: [],
+          metadata: { source: "mcp" },
+        },
       ],
       onIntegrationOAuth: (input) => {
         signIns.push(input.integrationID)
@@ -1333,6 +1375,13 @@ test("providers: the connect dialog lists connected providers and manages their 
         connections: accounts.toSorted((a, b) => Number(b.id === state.active) - Number(a.id === state.active)),
       },
       { id: "anthropic", name: "Anthropic", methods: [{ type: "key", label: "API key" }], connections: [] },
+      {
+        id: "linear",
+        name: "Linear",
+        methods: [{ id: "oauth", type: "oauth", label: "Sign in" }],
+        connections: [],
+        metadata: { source: "mcp" },
+      },
     ],
     onCredentialActivate: (credentialID) => {
       activated.push(credentialID)
@@ -1353,6 +1402,9 @@ test("providers: the connect dialog lists connected providers and manages their 
   await expect(
     dialog.locator('[data-provider-id="anthropic"]').locator('[data-slot="provider-connected"]'),
   ).toHaveCount(0)
+  // MCP servers connect from the MCPs dialog and settings, not here.
+  await expect(dialog.locator('[data-provider-id="linear"]')).toHaveCount(0)
+  await expect(dialog.getByText("MCP", { exact: true })).toHaveCount(0)
   const container = page.locator('[data-slot="dialog-container"]')
   await expect.poll(async () => (await container.boundingBox())?.height).toBe(512)
   const picker = await container.boundingBox()

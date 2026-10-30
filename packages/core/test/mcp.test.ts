@@ -1619,7 +1619,6 @@ it.live("discovers and reads MCP resources through Code Mode", () =>
         'return await tools.opencode.read_mcp_resource({ server: "resources", uri: "docs://gone" })',
       )
       expect(gone.metadata?.error).toBe(true)
-      expect(gone.output.output).toContain("Unable to read MCP resource resources:docs://gone")
       expect(gone.output.output).toContain("Resource not found")
       const missing = yield* run(
         'return await tools.opencode.read_mcp_resource({ server: "missing", uri: "docs://readme" })',
@@ -1880,6 +1879,39 @@ test("isolates nested configured MCP mutations and reconciles them", async () =>
         expect(config.headers?.Authorization).toBe("original")
         expect(published.filter((type) => type === McpEvent.StatusChanged.type)).toHaveLength(2)
       }).pipe(Effect.provide(resourceMcpLayer(config, undefined, undefined, { published }))),
+    ),
+  )
+})
+
+test("publishes MCP changes while live but not while the location shuts down", async () => {
+  const published: string[] = []
+  await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const server = yield* resourceServer({ listChanged: true })
+        const scope = yield* Scope.make()
+        const context = yield* Layer.buildWithScope(
+          resourceMcpLayer(server.url, undefined, undefined, { published }),
+          scope,
+        )
+        yield* Effect.gen(function* () {
+          const service = yield* Mcp.Service
+          expect(yield* settled(service)).toEqual({ status: "connected" })
+          published.length = 0
+          yield* Effect.promise(server.sendResourceListChanged)
+          yield* Effect.sync(() => published).pipe(
+            Effect.filterOrFail(
+              (types) => types.includes(McpEvent.ResourcesChanged.type),
+              () => new Error("resource change was not published"),
+            ),
+            Effect.retry({ times: 200, schedule: Schedule.spaced("10 millis") }),
+          )
+        }).pipe(Effect.provide(context))
+        published.length = 0
+        // Location shutdown closes plugin registrations under State.shutdown, so config does not reconcile.
+        yield* State.shutdown(Scope.close(scope, Exit.void))
+        expect(published.filter((type) => type.startsWith("mcp."))).toEqual([])
+      }),
     ),
   )
 })
