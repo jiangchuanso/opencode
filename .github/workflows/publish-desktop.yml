@@ -278,8 +278,11 @@ jobs:
             exit 1
           fi
 
-          binary="$(find "$stage/opt" -maxdepth 2 -type f -name 'ai.opencode.desktop*' | head -n 1)"
-          if [ -z "$binary" ]; then
+          # Upstream dropped the trailing .desktop from the Linux executable so
+          # AppImage does not parse the ELF as a desktop entry. Derive the binary
+          # from the verified Exec target instead of hard-coding a filename.
+          binary="$stage$launcher_exec"
+          if [[ "$launcher_exec" != /opt/* ]]; then
             echo "::error::deb installs no application binary under /opt"
             exit 1
           fi
