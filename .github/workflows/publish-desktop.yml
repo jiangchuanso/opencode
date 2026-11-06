@@ -3,8 +3,8 @@
 # Upstream builds this matrix inside its own release workflow, which depends on
 # resources the fork does not own. This workflow keeps the parts that build
 # without them and is the single implementation of desktop packaging:
-#   - Windows: nsis installer (.exe). script/sign-windows.ps1 exits early when the
-#     Azure Trusted Signing variables are unset, so the installer is unsigned.
+#   - Windows: unsigned nsis installer (.exe). Upstream moved signing out of the
+#     build, so the fork invokes electron-builder directly to keep shipping the .exe.
 #   - Linux: deb, plus AppImage and rpm, the other targets listed in
 #     packages/desktop/electron-builder.config.ts.
 #   - macOS is deliberately absent: its config needs Apple certificates for
@@ -28,12 +28,11 @@
 #     installers instead of a CLI build.
 #
 # Channel notes:
-#   - prod and beta bundle the CLI that packages/cli/script/build.ts produces:
-#     prebuild copies it to resources/opencode-cli, and packaging fails without it.
+#   - prod and beta bundle the CLI that packages/cli/script/build.ts produces for
+#     OPENCODE_TARGET; packages/desktop/script/build.ts stages it in resources/.
 #     Each package entry builds it for its own architecture, because the runners are
 #     x64 while electron-builder cross-compiles the app.
-#   - dev bundles a CLI downloaded from npm at the version pinned in
-#     packages/desktop/scripts/utils.ts, which is no longer published.
+#   - dev downloads a published dev CLI; that npm dist-tag may no longer resolve.
 #
 # Nothing is signed and electron-builder never publishes (--publish never).
 
@@ -118,10 +117,10 @@ jobs:
 
   package:
     needs: release
-    # `cli_package` is the distribution packages/cli/script/build.ts writes for this
-    # entry, and `cli_target` is the identity the desktop resolves it by. They differ
-    # for arm64: the runners are x64, so without OPENCODE_CLI_TARGET the app would
-    # bundle an x64 CLI into an arm64 installer.
+    # `target` is the desktop's OPENCODE_TARGET; `cli_target` is the CLI build's
+    # OPENCODE_TARGET (x64 entries bundle the -baseline CLI package). Cross-built
+    # arm64 entries need install-flags so the target's node-pty prebuild exists on
+    # the x64 runner.
     strategy:
       fail-fast: false
       matrix:
@@ -129,32 +128,52 @@ jobs:
           - os: windows-latest
             platform: win
             arch: x64
+            target: windows-x64
+            cli_target: windows-x64-baseline
+            install_flags: ""
             name: opencode-desktop-windows-x64
-            cli_package: opencode-windows-x64-baseline
-            cli_target: x86_64-pc-windows-msvc
           - os: windows-latest
             platform: win
             arch: arm64
+            target: windows-arm64
+            cli_target: windows-arm64
+            install_flags: --cpu=*
             name: opencode-desktop-windows-arm64
-            cli_package: opencode-windows-arm64
-            cli_target: aarch64-pc-windows-msvc
           - os: ubuntu-latest
             platform: linux
             arch: x64
+            target: linux-x64
+            cli_target: linux-x64-baseline
+            install_flags: ""
             name: opencode-desktop-linux-x64
-            cli_package: opencode-linux-x64-baseline
-            cli_target: x86_64-unknown-linux-gnu
           - os: ubuntu-latest
             platform: linux
             arch: arm64
+            target: linux-arm64
+            cli_target: linux-arm64
+            install_flags: --cpu=*
             name: opencode-desktop-linux-arm64
-            cli_package: opencode-linux-arm64
-            cli_target: aarch64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
+      # Release builds take their version from OPENCODE_VERSION rather than from
+      # package.json. Every later step (CLI, vite, electron-builder) reads it.
+      - name: Resolve version
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          if [ -z "$version" ]; then
+            version="$(grep -m1 '"version"' package.json | cut -d'"' -f4)"
+          fi
+          echo "OPENCODE_VERSION=$version" >> "$GITHUB_ENV"
+
       - uses: ./.github/actions/setup-bun
+        with:
+          install-flags: ${{ matrix.install_flags }}
 
       # electron-builder builds rpm through fpm, which shells out to rpmbuild.
       - name: Install Linux packaging tools
@@ -163,18 +182,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends rpm
 
-      # Upstream generates this directory from a Rust napi module (macOS window
-      # helper plus swift-build). The fork does not ship it and win/linux never
-      # load it, but electron-builder.config.ts lists it as an extra resource and
-      # needs the source directory to exist.
-      - name: Create native resource directory
-        shell: bash
-        run: mkdir -p packages/desktop/native
-
       # The desktop ships the CLI binary as resources/opencode-cli and refuses to
       # package without it, so prod/beta need a built distribution. Building it here
-      # is what lets the four architectures run in parallel; --target selects the
-      # binary that matches the app electron-builder is about to cross-compile.
+      # is what lets the four architectures run in parallel; OPENCODE_TARGET selects
+      # the binary that matches the app electron-builder is about to cross-compile.
       - name: Build CLI distribution
         if: inputs.channel != 'dev'
         working-directory: packages/cli
@@ -184,42 +195,32 @@ jobs:
           # one renames the registration file (service-<channel>.json) and moves the
           # default port, so the packaged app would never find the service it started.
           OPENCODE_CHANNEL: latest
-          OPENCODE_TAG: ${{ inputs.tag }}
+          OPENCODE_TARGET: ${{ matrix.cli_target }}
           NODE_OPTIONS: ${{ runner.os == 'Windows' && '--max-old-space-size=4096' || '' }}
-        run: |
-          set -euo pipefail
+        run: bun run script/build.ts
 
-          # A bundled CLI needs a release version rather than a preview one, so prefer
-          # the tag being released and fall back to the version in the source tree.
-          version="${OPENCODE_TAG:-}"
-          version="${version#v}"
-          if [ -z "$version" ]; then
-            version="$(grep -m1 '"version"' package.json | cut -d'"' -f4)"
-          fi
-
-          OPENCODE_VERSION="$version" bun run script/build.ts --target=${{ matrix.cli_package }}
-
-      # Copies the channel icons/metainfo into resources/ and stages the CLI binary
-      # the packager requires. Bun runs the desktop `prebuild` script before
-      # `build`, so this step does both and cannot split into a separate prebuild
-      # step: without OPENCODE_CLI_DIST the lifecycle prebuild aborts with
-      # "OPENCODE_CLI_DIST is required for production desktop builds".
+      # Copies the channel icons/metainfo into resources/, stages the CLI binary and
+      # builds out/. Without OPENCODE_TARGET it resolves the host architecture and
+      # bundles an x64 CLI (and x64 node-pty) into an arm64 app.
       - name: Build desktop assets
         run: bun run --cwd packages/desktop build
         env:
           OPENCODE_CHANNEL: ${{ inputs.channel }}
-          # The distribution the step above produced, and the identity inside it.
-          # Without the target the desktop resolves the host architecture and ships
-          # an x64 CLI in the arm64 installer.
-          OPENCODE_CLI_DIST: ${{ github.workspace }}/packages/cli/dist
-          OPENCODE_CLI_TARGET: ${{ matrix.cli_target }}
+          OPENCODE_TARGET: ${{ matrix.target }}
 
-      # --publish never keeps electron-builder away from the GitHub release config
-      # in electron-builder.config.ts, which points at the upstream repository.
+      # Upstream replaced package:win / package:linux with `bun run pack`, which
+      # writes an unpacked Windows app to the repository-root dist/desktop for a
+      # separate signing job. The fork has no signing job and ships installers, so
+      # call electron-builder directly to keep .exe/deb/AppImage/rpm in
+      # packages/desktop/dist, where the verification, upload and release steps
+      # below expect them. --publish never keeps electron-builder away from the
+      # GitHub release config in electron-builder.config.ts (upstream repository).
       - name: Package ${{ matrix.arch }}
-        run: bun run --cwd packages/desktop package:${{ matrix.platform }} -- --${{ matrix.arch }} --publish never
+        working-directory: packages/desktop
+        run: bunx electron-builder --${{ matrix.platform }} --${{ matrix.arch }} --publish never --config electron-builder.config.ts
         env:
           OPENCODE_CHANNEL: ${{ inputs.channel }}
+          OPENCODE_TARGET: ${{ matrix.target }}
           GH_TOKEN: ${{ github.token }}
 
       # Kylin V10 SP1 desktop is an Ubuntu 20.04 base: dpkg, glibc 2.31, GTK 3 and
