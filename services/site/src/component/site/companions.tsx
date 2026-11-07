@@ -12,8 +12,8 @@ const [hex, opentunnel] = anomalyApps
 
 export const companions: Record<PageSlug, (typeof anomalyApps)[number][]> = {
   desktop: [hex, opentunnel],
-  mobile: [hex, opentunnel],
   terminal: [opentunnel, hex],
+  mobile: [hex, opentunnel],
   sdk: [opentunnel, hex],
   ide: [opentunnel, hex],
   mini: [opentunnel, hex],
@@ -30,6 +30,7 @@ export function Companions(props: { product: PageSlug }) {
   return (
     <section
       data-component="companions"
+      data-section="companions"
       data-design="companionStyle"
       data-style={siteSettings.companionStyle}
       aria-label={i18n.t("site.companions")}
