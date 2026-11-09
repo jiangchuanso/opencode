@@ -89,7 +89,8 @@ describe("cards", () => {
     expect(card).toMatchObject({
       kind: "model",
       name: "Inkling 2 Small",
-      lab: { name: "Thinking Machines", icon: null },
+      // This fork's provider icon catalog includes Thinking Machines, unlike upstream's.
+      lab: { name: "Thinking Machines", icon: "thinkingmachines" },
       rank: 20,
       tokens: 357_956_989_789,
     })
