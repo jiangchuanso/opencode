@@ -7,6 +7,18 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+  # release.yml gates stable releases by calling this workflow. The fork keeps its reduced CI shape, so these
+  # inputs only keep that reusable-workflow contract valid; the release jobs are upstream-only in practice.
+  workflow_call:
+    inputs:
+      quarantine:
+        description: Run only the quarantined browser tests (packages/app/e2e/QUARANTINE.md)
+        type: boolean
+        default: false
+      release_gate:
+        description: Run the browser suites on Linux only
+        type: boolean
+        default: false
 
 concurrency:
   # Keep every run on dev so cancelled checks do not pollute the default branch
