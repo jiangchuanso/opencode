@@ -13,7 +13,6 @@ import { Environment } from "../../environment/index.js"
 import { Flag } from "../../flag.js"
 import { Job } from "../../job.js"
 import { FileAccess } from "../../file-access.js"
-import { Location } from "../../location.js"
 import { Permission } from "../../permission.js"
 import { NonNegativeInt } from "../../schema.js"
 import { Session } from "../../session.js"
@@ -98,6 +97,10 @@ const StructuredOutput = Schema.Struct({
   pid: Schema.optionalKey(NonNegativeInt).annotate({
     description: "Process ID while the command is running in the background",
   }),
+  killed: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Why the command ended without an exit code, when the reason is known: the machine's worker restarted or lost the process, or the local process daemon stopped",
+  }),
   wallTimeSeconds: Schema.Number.annotate({ description: "Seconds since the command started" }),
 })
 
@@ -117,7 +120,7 @@ const resultMessages = (output: Output, timeout?: number) => {
 const toolResult = (output: Output, timeout?: number) => {
   return {
     output: {
-      ...Struct.omit(output, ["exit", "status", "truncated", "timeout", "killed"]),
+      ...Struct.omit(output, ["exit", "status", "truncated", "timeout"]),
       exitCode: output.exit ?? null,
     },
     content: resultMessages(output, timeout).map((text) => ({
@@ -303,7 +306,7 @@ export const Plugin = {
     const jobs = yield* Job.Service
     const access = yield* FileAccess.Service
     const environment = yield* Environment.Service
-    const location = yield* Location.Service
+    const workingDirectory = yield* Environment.workingDirectory
     const shell = yield* Shell.Service
     const shellSelect = yield* ShellSelect.Service
     const compatibleShell = shellSelect.resolve({ priority: "compat" })
@@ -325,10 +328,7 @@ export const Plugin = {
           ? requested.target
           : yield* access.resolve({
               path: invocation.cwd,
-              base:
-                requested.target.environment.id === environment.id
-                  ? { absolute: location.directory, environment }
-                  : requested.target,
+              base: requested.target.environment.id === environment.id ? workingDirectory : requested.target,
               kind: "directory",
             })
       invocation.cwd = target.absolute
@@ -347,7 +347,13 @@ export const Plugin = {
       // Approval can outlive the directory, so validate immediately before spawning.
       const workdir = yield* Environment.typeFollowing(target.environment.files, target.absolute).pipe(
         Effect.catchTag("Environment.NotFound", () =>
-          Effect.fail(new Error(`Working directory does not exist: ${target.absolute}`)),
+          Effect.fail(
+            new Error(
+              target.machine === undefined
+                ? `Working directory does not exist: ${target.absolute}`
+                : `Working directory does not exist on ${target.machine}: ${target.absolute}`,
+            ),
+          ),
         ),
       )
       if (workdir !== "directory")
@@ -431,7 +437,7 @@ export const Plugin = {
                 )
                 return yield* Effect.gen(function* () {
                   // The same default `Shell.create` gives the hooks, so `prepare` can tell whether one moved it.
-                  const cwd = input.workdir ?? location.directory
+                  const cwd = input.workdir ?? workingDirectory.absolute
                   const target = yield* restore(
                     Effect.raceFirst(access.resolve({ path: cwd, kind: "directory" }), stoppedBeforeStart),
                   )
