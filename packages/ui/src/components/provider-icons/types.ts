@@ -37,6 +37,7 @@ export const iconNames = [
   "togetherai",
   "tinfoil",
   "thinkingmachines",
+  "tencent",
   "the-grid-ai",
   "tensorx",
   "tencent-tokenhub",
